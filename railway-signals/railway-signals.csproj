@@ -15,6 +15,7 @@
 	  relying on it. Keep the values in sync with /etc/environment.
 	-->
 	<PropertyGroup>
+		<CSII_AppId>949230</CSII_AppId>
 		<CSII_TOOLPATH>/home/michael/.local/share/Steam/steamapps/common/Cities Skylines II/Cities2_Data/Content/Game/.ModdingToolchain</CSII_TOOLPATH>
 	</PropertyGroup>
 	<Import Project="$(CSII_TOOLPATH)/Mod.props" />
@@ -120,20 +121,41 @@
 	<Target Name="CustomModPostProcessorConfig" AfterTargets="ModPostProcessorConfig">
 		<PropertyGroup>
 			<ModPostProcessorResponseFile>$(IntermediateOutputPath)ModPostProcessorArgs.rsp</ModPostProcessorResponseFile>
+			<ModPostProcessorResponseFileFullPath>$([System.IO.Path]::GetFullPath('$(ModPostProcessorResponseFile)'))</ModPostProcessorResponseFileFullPath>
+			<!--
+			  ModPostProcessor hands the Unity project path to AssemblyLoadContext.LoadFromAssemblyPath
+			  to load bcl.exe, which rejects a unix path as non-absolute. The prefix maps the
+			  filesystem root at Z:, so pass the same directory in that form.
+			-->
+			<UnityModProjectWinPath>Z:$(UnityModProjectFullPath.Replace('/', '\'))</UnityModProjectWinPath>
 		</PropertyGroup>
 		<ItemGroup>
 			<ModPostProcessorArgLines Remove="@(ModPostProcessorArgLines)" />
 			<ModPostProcessorArgLines Include="PostProcess" />
 			<ModPostProcessorArgLines Include="&quot;$(TargetPath)&quot;" />
 			<ModPostProcessorArgLines Include="-u" />
-			<ModPostProcessorArgLines Include="&quot;$(UnityModProjectFullPath)&quot;" />
+			<ModPostProcessorArgLines Include="&quot;$(UnityModProjectWinPath)&quot;" />
 			<ModPostProcessorArgLines Include="@(ReferencePath->'-r%0a&quot;%(Identity)&quot;')" />
 			<ModPostProcessorArgLines Include="-p%0aWindows%0a-p%0amacOS%0a-p%0aLinux%0a-d%0a-v" />
 		</ItemGroup>
 		<WriteLinesToFile File="$(ModPostProcessorResponseFile)" Lines="@(ModPostProcessorArgLines)" Overwrite="true" />
 		<PropertyGroup>
-			<ModPostProcessorArgs>"$(ModPostProcessorFullPath)" "@$(ModPostProcessorResponseFile)"</ModPostProcessorArgs>
+			<ModPostProcessorArgs>protontricks-launch --appid $(CSII_AppId) "$(ModPostProcessorFullPath)" "@$(ModPostProcessorResponseFileFullPath)"</ModPostProcessorArgs>
 		</PropertyGroup>
 	</Target>
 
+	<!--
+	  The post processor runs through protontricks so it gets the same Proton build the game runs
+	  under, where it exits cleanly; under plain wine it faults on shutdown and reports -1 after
+	  having written every output. Its stderr still carries prefix chatter that says nothing about
+	  success, so only the exit code is treated as the verdict.
+
+	  BeforeTargets is needed because overriding a target moves it to the end of the AfterBuild
+	  order, which would otherwise let DeployWIP publish the assembly before Burst has processed it.
+	-->
+	<Target Name="RunModPostProcessor" AfterTargets="AfterBuild" BeforeTargets="DeployWIP" Condition="'$(NeedBuild)'">
+		<Error Condition="!Exists('$(ModPostProcessorFullPath)')" Text="Post processor not found, please check the path: $(ModPostProcessorFullPath)" />
+		<Message Text="Run post processor: $(ModPostProcessorArgs)" Importance="high" />
+		<Exec Command="$(ModPostProcessorArgs)" LogStandardErrorAsError="false" StandardErrorImportance="low" />
+	</Target>
 </Project>

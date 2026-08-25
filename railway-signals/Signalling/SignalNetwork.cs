@@ -16,6 +16,10 @@ namespace RailwaySignals.Signalling
 
         public SignalKind m_Kind;
 
+        public SignalClass m_Class;
+
+        public SignalSpeed m_Speed;
+
         /// <summary>Net entity the placed object hangs off, so it dies with the track.</summary>
         public Entity m_Owner;
 
@@ -41,8 +45,8 @@ namespace RailwaySignals.Signalling
     {
         public NativeList<SignalSiteData> m_Sites;
 
-        /// <summary>Lanes of every block, indexed through <see cref="m_BlockRanges"/>.</summary>
-        public NativeList<Entity> m_BlockLanes;
+        /// <summary>Lanes of every block with the direction travel takes over them, indexed through <see cref="m_BlockRanges"/>.</summary>
+        public NativeList<DirectedLane> m_BlockLanes;
 
         public NativeList<int2> m_BlockRanges;
 
@@ -61,7 +65,7 @@ namespace RailwaySignals.Signalling
             return new SignalNetwork
             {
                 m_Sites = new NativeList<SignalSiteData>(256, allocator),
-                m_BlockLanes = new NativeList<Entity>(2048, allocator),
+                m_BlockLanes = new NativeList<DirectedLane>(2048, allocator),
                 m_BlockRanges = new NativeList<int2>(256, allocator),
                 m_Successors = new NativeList<int>(512, allocator),
                 m_SuccessorRanges = new NativeList<int2>(256, allocator),

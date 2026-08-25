@@ -39,6 +39,15 @@ namespace RailwaySignals.Signalling
 
         public bool m_LeftHandTraffic;
 
+        /// <summary>Curves at least this sharp make the signal admitting them a medium speed one. Units are 1/radius.</summary>
+        public float m_MediumCurviness;
+
+        /// <summary>Track limited to at or below this speed, in metres per second, is medium speed.</summary>
+        public float m_MediumSpeedLimit;
+
+        /// <summary>Blocks no longer than this, in metres, are cramped enough to be medium speed.</summary>
+        public float m_MediumBlockLength;
+
         private const int kMaxBlockLanes = 512;
 
         public void Plan(NativeList<Entity> trackLanes, ref SignalNetwork network)
@@ -51,6 +60,7 @@ namespace RailwaySignals.Signalling
             PlaceFixedSignals(trackLanes, ref network, ref scratch, ref scratch2);
             PlaceIntermediateSignals(trackLanes, ref network, ref scratch, ref scratch2);
             BuildBlocks(ref network, ref scratch);
+            ClassifySignals(ref network, ref scratch);
 
             scratch.Dispose();
             scratch2.Dispose();
@@ -301,6 +311,8 @@ namespace RailwaySignals.Signalling
                 m_Signal = Entity.Null,
                 m_Position = position,
                 m_Rotation = rotation,
+                m_Class = SignalClass.Home,
+                m_Speed = SignalSpeed.Normal,
                 m_Aspect = SignalAspect.Stop
             });
         }
@@ -350,7 +362,7 @@ namespace RailwaySignals.Signalling
                     {
                         continue;
                     }
-                    network.m_BlockLanes.Add(lane.m_Lane);
+                    network.m_BlockLanes.Add(lane);
                     if (network.m_SiteByApproach.TryGetValue(lane, out int successor))
                     {
                         AddUnique(successor, successorStart, ref network.m_Successors);
@@ -370,6 +382,58 @@ namespace RailwaySignals.Signalling
 
             frontier.Dispose();
             visited.Dispose();
+        }
+
+        /// <summary>
+        /// Works out what sort of signal each site is now that its block is known. A block with
+        /// pointwork, a crossing or a platform in it has to be interlocked, so its signal is a home
+        /// signal; plain line between two signals gets an automatic. Medium speed is called for
+        /// where the road ahead curves sharply, is posted slow, or is short enough that the geometry
+        /// is doing the limiting, which is what junction throats and yards look like.
+        /// </summary>
+        private void ClassifySignals(ref SignalNetwork network, ref NativeList<DirectedLane> scratch)
+        {
+            for (int i = 0; i < network.m_Sites.Length; i++)
+            {
+                SignalSiteData site = network.m_Sites[i];
+                int2 lanes = network.m_BlockRanges[i];
+                bool interlocked = network.m_SuccessorRanges[i].y > 1 || IsPlatform(site.m_Approach.m_Lane);
+                float length = 0f;
+                float curviness = 0f;
+                float speedLimit = float.MaxValue;
+
+                for (int j = lanes.x; j < lanes.x + lanes.y; j++)
+                {
+                    DirectedLane lane = network.m_BlockLanes[j];
+                    if (!m_Graph.m_TrackLaneData.TryGetComponent(lane.m_Lane, out var trackLane))
+                    {
+                        continue;
+                    }
+                    length += m_Graph.GetLength(lane.m_Lane);
+                    curviness = math.max(curviness, trackLane.m_Curviness);
+                    speedLimit = math.min(speedLimit, trackLane.m_SpeedLimit);
+                    interlocked |= HasPointwork(lane.m_Lane) || IsPlatform(lane.m_Lane) || HasCrossingOverlap(lane.m_Lane) || IsConverging(lane, ref scratch);
+                }
+
+                site.m_Class = interlocked ? SignalClass.Home : SignalClass.Automatic;
+                site.m_Speed = (lanes.y == 0 || curviness >= m_MediumCurviness || speedLimit <= m_MediumSpeedLimit || length <= m_MediumBlockLength)
+                    ? SignalSpeed.Medium
+                    : SignalSpeed.Normal;
+                network.m_Sites[i] = site;
+            }
+        }
+
+        private bool IsPlatform(Entity lane)
+        {
+            return m_Graph.m_TrackLaneData.TryGetComponent(lane, out var trackLane) && (trackLane.m_Flags & TrackLaneFlags.Station) != 0;
+        }
+
+        /// <summary>True when another route joins this lane, which is trailing points however they are flagged.</summary>
+        private bool IsConverging(DirectedLane lane, ref NativeList<DirectedLane> scratch)
+        {
+            scratch.Clear();
+            m_Graph.GetPredecessors(lane, ref scratch);
+            return scratch.Length > 1;
         }
 
         private static void AddUnique(int value, int start, ref NativeList<int> list)

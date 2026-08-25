@@ -134,7 +134,10 @@ namespace RailwaySignals.Systems
                 m_IntermediateOnBidirectional = Mod.setting.intermediateOnBidirectionalTrack,
                 m_Setback = Mod.setting.signalSetback,
                 m_LateralOffset = Mod.setting.signalOffset,
-                m_LeftHandTraffic = m_CityConfigurationSystem.leftHandTraffic
+                m_LeftHandTraffic = m_CityConfigurationSystem.leftHandTraffic,
+                m_MediumCurviness = 1f / math.max(1f, Mod.setting.mediumSpeedCurveRadius),
+                m_MediumSpeedLimit = Mod.setting.mediumSpeedLimit / 3.6f,
+                m_MediumBlockLength = Mod.setting.mediumSpeedBlockLength
             };
             planner.Plan(trackLanes, ref m_Network);
             trackLanes.Dispose();
@@ -176,19 +179,24 @@ namespace RailwaySignals.Systems
 
         /// <summary>
         /// Matches the posts already in the world to the freshly planned sites by the boundary they
-        /// govern, moving those that survived, creating the new ones and destroying the rest.
+        /// govern, moving those that survived, creating the new ones and destroying the rest. A
+        /// signal whose class changed needs a different asset, so it is rebuilt rather than moved.
         /// </summary>
         private void ReconcileSignalObjects()
         {
-            Entity prefab = m_SignalPrefabSystem.GetSignalPrefab(Mod.setting.signalPrefabName);
-            if (prefab == Entity.Null)
+            var prefabs = new Entity[2];
+            var archetypes = new EntityArchetype[2];
+            for (int i = 0; i < prefabs.Length; i++)
             {
-                return;
+                prefabs[i] = m_SignalPrefabSystem.GetSignalPrefab((SignalClass)i);
+                if (prefabs[i] != Entity.Null)
+                {
+                    archetypes[i] = EntityManager.GetComponentData<ObjectData>(prefabs[i]).m_Archetype;
+                }
             }
-            EntityArchetype archetype = EntityManager.GetComponentData<ObjectData>(prefab).m_Archetype;
-            if (!archetype.Valid)
+            if (!archetypes[0].Valid && !archetypes[1].Valid)
             {
-                Mod.log.Warn("Signal prefab has no instantiable archetype.");
+                Mod.log.Warn("No signal prefab with an instantiable archetype is available.");
                 return;
             }
 
@@ -203,13 +211,26 @@ namespace RailwaySignals.Systems
                 }
             }
 
-            var missing = new NativeList<int>(m_Network.m_Sites.Length, Allocator.Temp);
+            var missingHome = new NativeList<int>(m_Network.m_Sites.Length, Allocator.Temp);
+            var missingAutomatic = new NativeList<int>(m_Network.m_Sites.Length, Allocator.Temp);
             for (int i = 0; i < m_Network.m_Sites.Length; i++)
             {
                 SignalSiteData site = m_Network.m_Sites[i];
+                Entity prefab = prefabs[(int)site.m_Class];
+                if (prefab == Entity.Null)
+                {
+                    continue;
+                }
                 if (!byApproach.TryGetValue(site.m_Approach, out Entity entity) || EntityManager.GetComponentData<PrefabRef>(entity).m_Prefab != prefab)
                 {
-                    missing.Add(i);
+                    if (site.m_Class == SignalClass.Automatic)
+                    {
+                        missingAutomatic.Add(i);
+                    }
+                    else
+                    {
+                        missingHome.Add(i);
+                    }
                     continue;
                 }
                 byApproach.Remove(site.m_Approach);
@@ -220,6 +241,8 @@ namespace RailwaySignals.Systems
                 {
                     EntityManager.AddComponent<Updated>(entity);
                 }
+                site.m_Signal = entity;
+                m_Network.m_Sites[i] = site;
             }
 
             NativeArray<Entity> stale = byApproach.GetValueArray(Allocator.Temp);
@@ -228,17 +251,19 @@ namespace RailwaySignals.Systems
                 EntityManager.AddComponent<Deleted>(stale[i]);
             }
 
-            CreateSignalObjects(archetype, prefab, missing);
+            CreateSignalObjects(archetypes[(int)SignalClass.Home], prefabs[(int)SignalClass.Home], missingHome);
+            CreateSignalObjects(archetypes[(int)SignalClass.Automatic], prefabs[(int)SignalClass.Automatic], missingAutomatic);
 
             stale.Dispose();
-            missing.Dispose();
+            missingHome.Dispose();
+            missingAutomatic.Dispose();
             byApproach.Dispose();
             existing.Dispose();
         }
 
         private void CreateSignalObjects(EntityArchetype archetype, Entity prefab, NativeList<int> siteIndices)
         {
-            if (siteIndices.Length == 0)
+            if (siteIndices.Length == 0 || !archetype.Valid)
             {
                 return;
             }
@@ -246,7 +271,8 @@ namespace RailwaySignals.Systems
             EntityManager.CreateEntity(archetype, created);
             for (int i = 0; i < created.Length; i++)
             {
-                SignalSiteData site = m_Network.m_Sites[siteIndices[i]];
+                int siteIndex = siteIndices[i];
+                SignalSiteData site = m_Network.m_Sites[siteIndex];
                 Entity entity = created[i];
                 EntityManager.AddComponent<Secondary>(entity);
                 EntityManager.AddComponent<Owner>(entity);
@@ -260,6 +286,8 @@ namespace RailwaySignals.Systems
                 }
                 EntityManager.AddComponent<Created>(entity);
                 EntityManager.AddComponent<Updated>(entity);
+                site.m_Signal = entity;
+                m_Network.m_Sites[siteIndex] = site;
             }
             created.Dispose();
         }
@@ -271,6 +299,8 @@ namespace RailwaySignals.Systems
                 m_Lane = site.m_Approach.m_Lane,
                 m_Forward = site.m_Approach.m_Forward,
                 m_Kind = site.m_Kind,
+                m_Class = site.m_Class,
+                m_Speed = site.m_Speed,
                 m_Aspect = SignalAspect.Stop
             };
         }

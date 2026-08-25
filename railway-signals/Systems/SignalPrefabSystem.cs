@@ -1,6 +1,7 @@
 using Game;
 using Game.Common;
 using Game.Prefabs;
+using RailwaySignals.Signalling;
 using Unity.Collections;
 using Unity.Entities;
 
@@ -20,9 +21,9 @@ namespace RailwaySignals.Systems
 
         private EntityQuery m_CandidateQuery;
 
-        private Entity m_SignalPrefab;
+        private readonly Entity[] m_Prefabs = new Entity[2];
 
-        private string m_ResolvedFor;
+        private readonly string[] m_ResolvedFor = new string[2];
 
         protected override void OnCreate()
         {
@@ -39,21 +40,27 @@ namespace RailwaySignals.Systems
         {
         }
 
-        /// <summary>The prefab to instantiate for signal posts, or Entity.Null if none is usable yet.</summary>
-        public Entity GetSignalPrefab(string preferredName)
+        /// <summary>The prefab to instantiate for posts of this class, or Entity.Null if none is usable yet.</summary>
+        public Entity GetSignalPrefab(SignalClass signalClass)
         {
-            if (m_SignalPrefab != Entity.Null && m_ResolvedFor == preferredName && EntityManager.Exists(m_SignalPrefab))
+            int index = (int)signalClass;
+            string preferredName = signalClass == SignalClass.Automatic
+                ? Mod.setting.automaticSignalPrefabName
+                : Mod.setting.homeSignalPrefabName;
+
+            if (m_Prefabs[index] != Entity.Null && m_ResolvedFor[index] == preferredName && EntityManager.Exists(m_Prefabs[index]))
             {
-                return m_SignalPrefab;
+                return m_Prefabs[index];
             }
-            m_ResolvedFor = preferredName;
-            m_SignalPrefab = Resolve(preferredName);
-            return m_SignalPrefab;
+            m_ResolvedFor[index] = preferredName;
+            m_Prefabs[index] = Resolve(preferredName);
+            return m_Prefabs[index];
         }
 
         public void Invalidate()
         {
-            m_SignalPrefab = Entity.Null;
+            m_Prefabs[0] = Entity.Null;
+            m_Prefabs[1] = Entity.Null;
         }
 
         private Entity Resolve(string preferredName)

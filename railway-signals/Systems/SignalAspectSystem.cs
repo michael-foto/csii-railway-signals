@@ -32,6 +32,8 @@ namespace RailwaySignals.Systems
 
         private ComponentLookup<TrafficLight> m_TrafficLightData;
 
+        private ComponentLookup<RailwaySignal> m_RailwaySignalData;
+
         private BufferLookup<LaneObject> m_LaneObjects;
 
         private BufferLookup<LaneOverlap> m_LaneOverlaps;
@@ -55,6 +57,7 @@ namespace RailwaySignals.Systems
             m_ControllerData = GetComponentLookup<Controller>(isReadOnly: true);
             m_TrainData = GetComponentLookup<Train>(isReadOnly: true);
             m_TrafficLightData = GetComponentLookup<TrafficLight>(isReadOnly: false);
+            m_RailwaySignalData = GetComponentLookup<RailwaySignal>(isReadOnly: false);
             m_LaneObjects = GetBufferLookup<LaneObject>(isReadOnly: true);
             m_LaneOverlaps = GetBufferLookup<LaneOverlap>(isReadOnly: true);
             m_NavigationLanes = GetBufferLookup<TrainNavigationLane>(isReadOnly: true);
@@ -81,6 +84,7 @@ namespace RailwaySignals.Systems
             m_ControllerData.Update(this);
             m_TrainData.Update(this);
             m_TrafficLightData.Update(this);
+            m_RailwaySignalData.Update(this);
             m_LaneObjects.Update(this);
             m_LaneOverlaps.Update(this);
             m_NavigationLanes.Update(this);
@@ -128,7 +132,7 @@ namespace RailwaySignals.Systems
                 bool blocked = false;
                 for (int j = range.x; j < range.x + range.y && !blocked; j++)
                 {
-                    Entity lane = network.m_BlockLanes[j];
+                    Entity lane = network.m_BlockLanes[j].m_Lane;
                     blocked = IsLaneBusy(lane, i);
                     if (blocked || !m_LaneOverlaps.TryGetBuffer(lane, out DynamicBuffer<LaneOverlap> overlaps))
                     {
@@ -181,23 +185,22 @@ namespace RailwaySignals.Systems
             for (int i = 0; i < network.m_Sites.Length; i++)
             {
                 SignalSiteData site = network.m_Sites[i];
-                site.m_Aspect = ResolveAspect(ref network, i, site.m_Blocked);
+                site.m_Aspect = ResolveAspect(ref network, i, site);
                 network.m_Sites[i] = site;
 
-                if (!m_TrafficLightData.TryGetComponent(site.m_Signal, out TrafficLight light))
+                if (m_TrafficLightData.TryGetComponent(site.m_Signal, out TrafficLight light))
                 {
-                    continue;
+                    Game.Objects.TrafficLightState state = GetLightState(site.m_Aspect);
+                    if (light.m_State != state)
+                    {
+                        light.m_State = state;
+                        m_TrafficLightData[site.m_Signal] = light;
+                    }
                 }
-                Game.Objects.TrafficLightState state = site.m_Aspect switch
+                if (m_RailwaySignalData.TryGetComponent(site.m_Signal, out RailwaySignal signal) && signal.m_Aspect != site.m_Aspect)
                 {
-                    SignalAspect.Stop => Game.Objects.TrafficLightState.Red,
-                    SignalAspect.Caution => Game.Objects.TrafficLightState.Yellow,
-                    _ => Game.Objects.TrafficLightState.Green
-                };
-                if (light.m_State != state)
-                {
-                    light.m_State = state;
-                    m_TrafficLightData[site.m_Signal] = light;
+                    signal.m_Aspect = site.m_Aspect;
+                    m_RailwaySignalData[site.m_Signal] = signal;
                 }
             }
         }
@@ -205,11 +208,12 @@ namespace RailwaySignals.Systems
         /// <summary>
         /// Caution when the block ahead is clear but any signal at the far end of it is at stop, or
         /// when the block runs into buffers. Without knowing which way a train will be routed at a
-        /// divergence, warning for the worst of the routes is the safe reading.
+        /// divergence, warning for the worst of the routes is the safe reading, and the same goes
+        /// for warning of a medium speed signal ahead.
         /// </summary>
-        private static SignalAspect ResolveAspect(ref SignalNetwork network, int siteIndex, bool blocked)
+        private static SignalAspect ResolveAspect(ref SignalNetwork network, int siteIndex, SignalSiteData site)
         {
-            if (blocked)
+            if (site.m_Blocked)
             {
                 return SignalAspect.Stop;
             }
@@ -218,14 +222,39 @@ namespace RailwaySignals.Systems
             {
                 return SignalAspect.Caution;
             }
+            bool medium = false;
             for (int i = range.x; i < range.x + range.y; i++)
             {
-                if (network.m_Sites[network.m_Successors[i]].m_Blocked)
+                SignalSiteData successor = network.m_Sites[network.m_Successors[i]];
+                if (successor.m_Blocked)
                 {
                     return SignalAspect.Caution;
                 }
+                medium |= successor.m_Speed == SignalSpeed.Medium;
             }
-            return SignalAspect.Clear;
+            return (medium && site.m_Speed == SignalSpeed.Normal) ? SignalAspect.ReduceToMedium : SignalAspect.Clear;
+        }
+
+        /// <summary>
+        /// Maps an aspect onto the lamps. Reduce to medium has no lamp of its own on a three
+        /// position head, so it is signalled either by flashing the green or, on a signal modelled
+        /// with a second head, by showing yellow above the green.
+        /// </summary>
+        private static Game.Objects.TrafficLightState GetLightState(SignalAspect aspect)
+        {
+            switch (aspect)
+            {
+                case SignalAspect.Stop:
+                    return Game.Objects.TrafficLightState.Red;
+                case SignalAspect.Caution:
+                    return Game.Objects.TrafficLightState.Yellow;
+                case SignalAspect.ReduceToMedium:
+                    return Mod.setting.mediumIndication == MediumIndication.YellowOverGreen
+                        ? Game.Objects.TrafficLightState.Yellow | Game.Objects.TrafficLightState.Green
+                        : Game.Objects.TrafficLightState.Green | Game.Objects.TrafficLightState.Flashing;
+                default:
+                    return Game.Objects.TrafficLightState.Green;
+            }
         }
     }
 }
