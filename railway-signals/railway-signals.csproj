@@ -1,0 +1,139 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<Configurations>Debug;Release</Configurations>
+	
+		<!--The file where mod information which is required for publishing mod on PDX mods are stored-->
+		<PublishConfigurationPath>Properties\PublishConfiguration.xml</PublishConfigurationPath>
+	</PropertyGroup>
+	
+	<!--Imports must be after PropertyGroup block-->
+	<!--
+	  GetEnvironmentVariable(name, EnvironmentVariableTarget.User) reads the
+	  Windows registry on .NET Framework/Wine, but returns empty on non-Windows
+	  .NET, so the path here and the properties below are hardcoded instead of
+	  relying on it. Keep the values in sync with /etc/environment.
+	-->
+	<PropertyGroup>
+		<CSII_TOOLPATH>/home/michael/.local/share/Steam/steamapps/common/Cities Skylines II/Cities2_Data/Content/Game/.ModdingToolchain</CSII_TOOLPATH>
+	</PropertyGroup>
+	<Import Project="$(CSII_TOOLPATH)/Mod.props" />
+	<Import Project="$(CSII_TOOLPATH)/Mod.targets" />
+
+	<!--Override the properties Mod.props tries to compute via the broken env-var lookup above-->
+	<PropertyGroup>
+		<ManagedPath>/home/michael/.local/share/Steam/steamapps/common/Cities Skylines II/Cities2_Data/Managed</ManagedPath>
+		<UserDataPath>/home/michael/.local/share/Steam/steamapps/compatdata/949230/pfx/drive_c/users/steamuser/AppData/LocalLow/Colossal Order/Cities Skylines II</UserDataPath>
+		<LocalModsPath>/home/michael/.local/share/Steam/steamapps/compatdata/949230/pfx/drive_c/users/steamuser/AppData/LocalLow/Colossal Order/Cities Skylines II/Mods</LocalModsPath>
+		<ModPostProcessorPath>/home/michael/.local/share/Steam/steamapps/common/Cities Skylines II/Cities2_Data/Content/Game/.ModdingToolchain/ModPostProcessor/ModPostProcessor.exe</ModPostProcessorPath>
+		<ModPublisherPath>/home/michael/.local/share/Steam/steamapps/common/Cities Skylines II/Cities2_Data/Content/Game/.ModdingToolchain/ModPublisher/ModPublisher.exe</ModPublisherPath>
+		<MSCORLIBPath>/home/michael/.local/share/Steam/steamapps/compatdata/949230/pfx/drive_c/windows/Microsoft.NET/Framework64/v4.0.30319/mscorlib.dll</MSCORLIBPath>
+		<UnityModProjectPath>/home/michael/UnityProjects/UnityModsProject</UnityModProjectPath>
+		<EntitiesVersion>1.3.10</EntitiesVersion>
+		<EntityPackagePath>$(UnityModProjectPath)/Library/PackageCache/com.unity.entities@$(EntitiesVersion)/Unity.Entities/SourceGenerators</EntityPackagePath>
+		<AssemblySearchPaths>$(AssemblySearchPaths);$(ManagedPath)</AssemblySearchPaths>
+	</PropertyGroup>
+	<!--Reference/Analyzer items are additive, not override-by-name, so the empty-path items Mod.props already added above (from the broken lookup) must be stripped before re-adding the correct ones-->
+	<ItemGroup>
+		<Reference Remove="@(Reference)" />
+		<Analyzer Remove="@(Analyzer)" />
+		<Reference Include="$(MSCORLIBPath)">
+			<Private>false</Private>
+		</Reference>
+		<Analyzer Include="$(EntityPackagePath)/SystemGenerator.SystemAPI.dll" />
+		<Analyzer Include="$(EntityPackagePath)/SystemGenerator.dll" />
+		<Analyzer Include="$(EntityPackagePath)/SystemGenerator.SystemAPI.QueryBuilder.dll" />
+		<Analyzer Include="$(EntityPackagePath)/SystemGenerator.LambdaJobs.dll" />
+		<Analyzer Include="$(EntityPackagePath)/SystemGenerator.Common.dll" />
+		<Analyzer Include="$(EntityPackagePath)/SystemGenerator.SystemAPI.Query.dll" />
+		<Analyzer Include="$(EntityPackagePath)/SystemGenerator.EntityQueryBulkOperations.dll" />
+		<Analyzer Include="$(EntityPackagePath)/AspectGenerator.dll" />
+		<Analyzer Include="$(EntityPackagePath)/Common.dll" />
+		<Analyzer Include="$(EntityPackagePath)/JobEntityGenerator.dll" />
+		<Analyzer Include="$(EntityPackagePath)/Unity.Entities.Analyzer.dll" />
+		<Analyzer Include="$(EntityPackagePath)/Unity.Entities.Analyzer.CodeFixes.dll" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<Reference Include="Game">
+			<Private>false</Private>
+		</Reference>
+		<Reference Include="Colossal.Core">
+			<Private>false</Private>
+		</Reference>
+		<Reference Include="Colossal.Logging">
+			<Private>false</Private>
+		</Reference>
+		<Reference Include="Colossal.Mathematics">
+			<Private>false</Private>
+		</Reference>
+		<Reference Include="Colossal.Localization">
+			<Private>false</Private>
+		</Reference>
+		<Reference Include="Colossal.IO.AssetDatabase">
+			<Private>false</Private>
+		</Reference>
+		<Reference Include="UnityEngine.CoreModule">
+			<Private>false</Private>
+		</Reference>
+		<Reference Include="Unity.Burst">
+			<Private>false</Private>
+		</Reference>
+		<Reference Include="Unity.Collections">
+			<Private>false</Private>
+		</Reference>
+		<Reference Include="Unity.Entities">
+			<Private>false</Private>
+		</Reference>
+		<Reference Include="Unity.Mathematics">
+			<Private>false</Private>
+		</Reference>
+	</ItemGroup>
+
+	<ItemGroup>
+		<Reference Update="System">
+			<Private>false</Private>
+		</Reference>
+		<Reference Update="System.Core">
+			<Private>false</Private>
+		</Reference>
+		<Reference Update="System.Data">
+			<Private>false</Private>
+		</Reference>
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Include="$(ModPropsFile)" Link="Properties\Mod.props" />
+		<None Include="$(ModTargetsFile)" Link="Properties\Mod.targets" />
+	</ItemGroup>
+
+	<!--
+	  Mod.targets builds ModPostProcessorArgs as one ~19KB single-line command
+	  (one "-r" per resolved reference, of which net48's reference-assemblies
+	  package alone contributes ~90). Wine's cmd.exe corrupts/truncates command
+	  lines that long before ModPostProcessor.exe ever sees them, splicing the
+	  tail of one argument onto the current directory as a garbage path. Fix:
+	  write the same arguments to a response file and invoke via "@file", which
+	  System.CommandLine (used by ModPostProcessor) expands by reading the file
+	  directly, bypassing cmd.exe's command-line parsing entirely.
+	-->
+	<Target Name="CustomModPostProcessorConfig" AfterTargets="ModPostProcessorConfig">
+		<PropertyGroup>
+			<ModPostProcessorResponseFile>$(IntermediateOutputPath)ModPostProcessorArgs.rsp</ModPostProcessorResponseFile>
+		</PropertyGroup>
+		<ItemGroup>
+			<ModPostProcessorArgLines Remove="@(ModPostProcessorArgLines)" />
+			<ModPostProcessorArgLines Include="PostProcess" />
+			<ModPostProcessorArgLines Include="&quot;$(TargetPath)&quot;" />
+			<ModPostProcessorArgLines Include="-u" />
+			<ModPostProcessorArgLines Include="&quot;$(UnityModProjectFullPath)&quot;" />
+			<ModPostProcessorArgLines Include="@(ReferencePath->'-r%0a&quot;%(Identity)&quot;')" />
+			<ModPostProcessorArgLines Include="-p%0aWindows%0a-p%0amacOS%0a-p%0aLinux%0a-d%0a-v" />
+		</ItemGroup>
+		<WriteLinesToFile File="$(ModPostProcessorResponseFile)" Lines="@(ModPostProcessorArgLines)" Overwrite="true" />
+		<PropertyGroup>
+			<ModPostProcessorArgs>"$(ModPostProcessorFullPath)" "@$(ModPostProcessorResponseFile)"</ModPostProcessorArgs>
+		</PropertyGroup>
+	</Target>
+
+</Project>
