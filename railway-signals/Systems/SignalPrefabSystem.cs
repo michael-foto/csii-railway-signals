@@ -21,9 +21,9 @@ namespace RailwaySignals.Systems
 
         private EntityQuery m_CandidateQuery;
 
-        private readonly Entity[] m_Prefabs = new Entity[2];
+        private readonly Entity[] m_Prefabs = new Entity[3];
 
-        private readonly string[] m_ResolvedFor = new string[2];
+        private readonly string[] m_ResolvedFor = new string[3];
 
         protected override void OnCreate()
         {
@@ -40,14 +40,23 @@ namespace RailwaySignals.Systems
         {
         }
 
-        /// <summary>The prefab to instantiate for posts of this class, or Entity.Null if none is usable yet.</summary>
-        public Entity GetSignalPrefab(SignalClass signalClass)
+        /// <summary>The prefab to instantiate for this part of a signal, or Entity.Null if none is usable yet.</summary>
+        public Entity GetSignalPrefab(SignalAsset asset)
         {
-            int index = (int)signalClass;
-            string preferredName = signalClass == SignalClass.Automatic
-                ? Mod.setting.automaticSignalPrefabName
-                : Mod.setting.homeSignalPrefabName;
-
+            int index = (int)asset;
+            string preferredName;
+            switch (asset)
+            {
+                case SignalAsset.Automatic:
+                    preferredName = Mod.setting.automaticSignalPrefabName;
+                    break;
+                case SignalAsset.BottomHead:
+                    preferredName = Mod.setting.bottomHeadPrefabName;
+                    break;
+                default:
+                    preferredName = Mod.setting.homeSignalPrefabName;
+                    break;
+            }
             if (m_Prefabs[index] != Entity.Null && m_ResolvedFor[index] == preferredName && EntityManager.Exists(m_Prefabs[index]))
             {
                 return m_Prefabs[index];
@@ -59,8 +68,10 @@ namespace RailwaySignals.Systems
 
         public void Invalidate()
         {
-            m_Prefabs[0] = Entity.Null;
-            m_Prefabs[1] = Entity.Null;
+            for (int i = 0; i < m_Prefabs.Length; i++)
+            {
+                m_Prefabs[i] = Entity.Null;
+            }
         }
 
         private Entity Resolve(string preferredName)

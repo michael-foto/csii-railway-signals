@@ -14,8 +14,6 @@ namespace RailwaySignals.Signalling
         /// <summary>The signal governs the boundary at this lane's exit end.</summary>
         public DirectedLane m_Approach;
 
-        public SignalKind m_Kind;
-
         public SignalClass m_Class;
 
         public SignalSpeed m_Speed;
@@ -23,8 +21,14 @@ namespace RailwaySignals.Signalling
         /// <summary>Net entity the placed object hangs off, so it dies with the track.</summary>
         public Entity m_Owner;
 
-        /// <summary>Placed object entity, or Null while the site has no object yet.</summary>
+        /// <summary>Placed object entity for the top head, or Null while the site has no object yet.</summary>
         public Entity m_Signal;
+
+        /// <summary>Placed object entity for the medium speed head, Null on a single headed signal.</summary>
+        public Entity m_BottomHead;
+
+        /// <summary>Whether this signal can ever show a medium indication and so needs a second head.</summary>
+        public bool m_TwoHead;
 
         public float3 m_Position;
 

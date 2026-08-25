@@ -28,15 +28,26 @@ Each signal is also classified two ways:
 
 ## Aspects
 
-| Aspect | Shown when | Lamps |
-| --- | --- | --- |
-| Stop | A train stands in the block ahead, or another movement has claimed part of it | Red |
-| Caution | Block ahead clear, next signal at stop, or the block runs into buffers | Yellow |
-| Reduce to medium | Road clear, but the next signal is a medium speed one | Flashing green, or yellow over green |
-| Clear | This block and the next are clear at normal speed | Green |
+These are speed signals, not route signals. The top head carries the normal speed indications and
+the bottom head the medium speed ones.
+
+| Aspect | Shown when | Top | Bottom |
+| --- | --- | --- | --- |
+| Stop | A train stands in the block ahead, or another movement has claimed part of it | Red | Red |
+| Caution | Block ahead clear at normal speed, next signal at stop | Yellow | Red |
+| Clear | This block and the next are clear at normal speed | Green | Red |
+| Reduce to medium | Road clear, but the next signal is a medium speed one | Yellow | Green |
+| Medium caution | Block ahead clear at medium speed, next signal at stop | Red | Yellow |
+| Medium clear | Block ahead clear at medium speed, next signal off stop | Red | Green |
+
+A block that runs into buffers reads as caution.
 
 Where a signal has several routes beyond it, the most restrictive of them decides the aspect,
-since the route a train will take is not known in advance.
+since the route a train will take is not known in advance. A signal's own speed is likewise fixed
+by the geometry of its block rather than by which route is set through it.
+
+A signal that can never show a medium indication, meaning it is a normal speed signal with no
+medium speed signal ahead of it, is placed single headed.
 
 A train still on approach to a signal does not put that signal to danger with its own claim on
 the block beyond it. A claim from any other movement does, which is what makes conflicting
@@ -44,21 +55,32 @@ routes through a junction interlock.
 
 ## Making the signal assets
 
-The mod does not draw anything itself. It sets `Game.Objects.TrafficLight.m_State` on the post
-and the base game lights the lamps, so an asset needs:
+The mod does not draw anything itself. It sets `Game.Objects.TrafficLight.m_State` and the base
+game lights the lamps. That component drives one three-lamp head, so **each head is its own
+object**, and a two headed signal is two objects sharing a position. Three assets are needed:
+
+| Asset | What it is |
+| --- | --- |
+| Home signal | Mast, both head housings, and the top head's three lamps |
+| Automatic signal | The same with an "A" plate |
+| Medium speed head | The lower head's three lamps alone, no mast |
+
+Each of the three needs:
 
 1. A **`TrafficLightObject`** component. This is what puts `Game.Objects.TrafficLight` into the
    instance archetype. Without it the mod will not use the asset at all.
 2. An **`EmissiveProperties`** component with one light mapped to each of the purposes
    `TrafficLight_Red`, `TrafficLight_Yellow` and `TrafficLight_Green`.
-3. For the flashing green medium indication, an **animation curve** assigned to the green light's
-   `animationIndex`. Without one the lamp just holds steady green, and the aspect is
-   indistinguishable from clear. Choosing "yellow over green" instead avoids needing the curve.
+
+The two heads are placed at the same position and rotation, so the medium speed head asset should
+carry its lamps at their real height on the mast. If you would rather offset it, the "medium speed
+head drop" setting lowers it.
 
 The model's **+Z axis faces the approaching train**, so the lamps should point along +Z.
 
 Name the assets and put those names in the mod's settings under "Signal posts". Until then the
-mod stands in a vanilla road traffic light so the signalling can be seen working.
+mod stands in a vanilla road traffic light for all three, which will stack both heads at one
+spot; raise the head drop setting to tell them apart while testing.
 
 ## Building
 

@@ -18,6 +18,13 @@ namespace RailwaySignals.Systems
     /// </summary>
     public partial class SignalAspectSystem : GameSystemBase
     {
+        /// <summary>
+        /// Shown in place of medium caution, whose red over yellow the engine cannot light. A train
+        /// reading it is stopping at the next signal either way, so the lost detail is the speed it
+        /// covers the intervening block at.
+        /// </summary>
+        private const SignalAspect kBottomYellowFallback = SignalAspect.Caution;
+
         private SignalNetworkSystem m_NetworkSystem;
 
         private EntityQuery m_TrainQuery;
@@ -188,15 +195,9 @@ namespace RailwaySignals.Systems
                 site.m_Aspect = ResolveAspect(ref network, i, site);
                 network.m_Sites[i] = site;
 
-                if (m_TrafficLightData.TryGetComponent(site.m_Signal, out TrafficLight light))
-                {
-                    Game.Objects.TrafficLightState state = GetLightState(site.m_Aspect);
-                    if (light.m_State != state)
-                    {
-                        light.m_State = state;
-                        m_TrafficLightData[site.m_Signal] = light;
-                    }
-                }
+                SetLamp(site.m_Signal, site.m_Aspect.TopLamp());
+                SetLamp(site.m_BottomHead, site.m_Aspect.BottomLamp());
+
                 if (m_RailwaySignalData.TryGetComponent(site.m_Signal, out RailwaySignal signal) && signal.m_Aspect != site.m_Aspect)
                 {
                     signal.m_Aspect = site.m_Aspect;
@@ -206,10 +207,44 @@ namespace RailwaySignals.Systems
         }
 
         /// <summary>
+        /// Lights one head. Each head is its own object with its own TrafficLight, so both drive the
+        /// ordinary TrafficLight_Red/Yellow/Green purposes and a head can show any of the three.
+        /// </summary>
+        private void SetLamp(Entity head, SignalLamp lamp)
+        {
+            if (!m_TrafficLightData.TryGetComponent(head, out TrafficLight light))
+            {
+                return;
+            }
+            Game.Objects.TrafficLightState state;
+            switch (lamp)
+            {
+                case SignalLamp.Red:
+                    state = Game.Objects.TrafficLightState.Red;
+                    break;
+                case SignalLamp.Yellow:
+                    state = Game.Objects.TrafficLightState.Yellow;
+                    break;
+                case SignalLamp.Green:
+                    state = Game.Objects.TrafficLightState.Green;
+                    break;
+                default:
+                    state = Game.Objects.TrafficLightState.None;
+                    break;
+            }
+            if (light.m_State != state)
+            {
+                light.m_State = state;
+                m_TrafficLightData[head] = light;
+            }
+        }
+
+        /// <summary>
         /// Caution when the block ahead is clear but any signal at the far end of it is at stop, or
         /// when the block runs into buffers. Without knowing which way a train will be routed at a
         /// divergence, warning for the worst of the routes is the safe reading, and the same goes
-        /// for warning of a medium speed signal ahead.
+        /// for warning of a medium speed signal ahead. Which head carries the indication follows
+        /// from the speed this signal itself admits a train at.
         /// </summary>
         private static SignalAspect ResolveAspect(ref SignalNetwork network, int siteIndex, SignalSiteData site)
         {
@@ -217,44 +252,27 @@ namespace RailwaySignals.Systems
             {
                 return SignalAspect.Stop;
             }
+            bool medium = site.m_Speed == SignalSpeed.Medium;
             int2 range = network.m_SuccessorRanges[siteIndex];
             if (range.y == 0)
             {
-                return SignalAspect.Caution;
+                return medium ? SignalAspect.MediumCaution : SignalAspect.Caution;
             }
-            bool medium = false;
+            bool mediumAhead = false;
             for (int i = range.x; i < range.x + range.y; i++)
             {
                 SignalSiteData successor = network.m_Sites[network.m_Successors[i]];
                 if (successor.m_Blocked)
                 {
-                    return SignalAspect.Caution;
+                    return medium ? SignalAspect.MediumCaution : SignalAspect.Caution;
                 }
-                medium |= successor.m_Speed == SignalSpeed.Medium;
+                mediumAhead |= successor.m_Speed == SignalSpeed.Medium;
             }
-            return (medium && site.m_Speed == SignalSpeed.Normal) ? SignalAspect.ReduceToMedium : SignalAspect.Clear;
-        }
-
-        /// <summary>
-        /// Maps an aspect onto the lamps. Reduce to medium has no lamp of its own on a three
-        /// position head, so it is signalled either by flashing the green or, on a signal modelled
-        /// with a second head, by showing yellow above the green.
-        /// </summary>
-        private static Game.Objects.TrafficLightState GetLightState(SignalAspect aspect)
-        {
-            switch (aspect)
+            if (medium)
             {
-                case SignalAspect.Stop:
-                    return Game.Objects.TrafficLightState.Red;
-                case SignalAspect.Caution:
-                    return Game.Objects.TrafficLightState.Yellow;
-                case SignalAspect.ReduceToMedium:
-                    return Mod.setting.mediumIndication == MediumIndication.YellowOverGreen
-                        ? Game.Objects.TrafficLightState.Yellow | Game.Objects.TrafficLightState.Green
-                        : Game.Objects.TrafficLightState.Green | Game.Objects.TrafficLightState.Flashing;
-                default:
-                    return Game.Objects.TrafficLightState.Green;
+                return SignalAspect.MediumClear;
             }
+            return mediumAhead ? SignalAspect.ReduceToMedium : SignalAspect.Clear;
         }
     }
 }

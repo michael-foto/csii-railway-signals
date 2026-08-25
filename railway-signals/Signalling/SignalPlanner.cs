@@ -79,13 +79,9 @@ namespace RailwaySignals.Signalling
                     {
                         continue;
                     }
-                    if (IsJunctionApproach(approach, ref scratch, ref scratch2))
+                    if (IsJunctionApproach(approach, ref scratch, ref scratch2) || IsPlatformExit(approach, ref scratch))
                     {
-                        AddSite(approach, SignalKind.Junction, ref network);
-                    }
-                    else if (IsPlatformExit(approach, ref scratch))
-                    {
-                        AddSite(approach, SignalKind.Starting, ref network);
+                        AddSite(approach, ref network);
                     }
                 }
             }
@@ -229,7 +225,7 @@ namespace RailwaySignals.Signalling
                     {
                         continue;
                     }
-                    AddSite(lane, SignalKind.Intermediate, ref network);
+                    AddSite(lane, ref network);
                     Push(lane, 0f, ref stack, ref scratch);
                     RunWalk(ref stack, ref visited, ref network, ref scratch, ref scratch2);
                 }
@@ -256,7 +252,7 @@ namespace RailwaySignals.Signalling
                 }
                 else if (distance >= m_BlockSpacing && IsPlainLine(walk.m_Lane, ref scratch, ref scratch2))
                 {
-                    AddSite(walk.m_Lane, SignalKind.Intermediate, ref network);
+                    AddSite(walk.m_Lane, ref network);
                     distance = 0f;
                 }
                 Push(walk.m_Lane, distance, ref stack, ref scratch);
@@ -295,7 +291,7 @@ namespace RailwaySignals.Signalling
             return scratch2.Length == 1;
         }
 
-        private void AddSite(DirectedLane approach, SignalKind kind, ref SignalNetwork network)
+        private void AddSite(DirectedLane approach, ref SignalNetwork network)
         {
             if (network.m_SiteByApproach.ContainsKey(approach))
             {
@@ -306,7 +302,6 @@ namespace RailwaySignals.Signalling
             network.m_Sites.Add(new SignalSiteData
             {
                 m_Approach = approach,
-                m_Kind = kind,
                 m_Owner = m_Graph.m_OwnerData.TryGetComponent(approach.m_Lane, out var owner) ? owner.m_Owner : Entity.Null,
                 m_Signal = Entity.Null,
                 m_Position = position,
@@ -419,6 +414,21 @@ namespace RailwaySignals.Signalling
                 site.m_Speed = (lanes.y == 0 || curviness >= m_MediumCurviness || speedLimit <= m_MediumSpeedLimit || length <= m_MediumBlockLength)
                     ? SignalSpeed.Medium
                     : SignalSpeed.Normal;
+                network.m_Sites[i] = site;
+            }
+
+            // A second head only earns its place where a medium indication can actually appear:
+            // on a medium speed signal, or on a normal one that has to warn of a medium one ahead.
+            for (int i = 0; i < network.m_Sites.Length; i++)
+            {
+                SignalSiteData site = network.m_Sites[i];
+                bool twoHead = site.m_Speed == SignalSpeed.Medium;
+                int2 successors = network.m_SuccessorRanges[i];
+                for (int j = successors.x; j < successors.x + successors.y && !twoHead; j++)
+                {
+                    twoHead = network.m_Sites[network.m_Successors[j]].m_Speed == SignalSpeed.Medium;
+                }
+                site.m_TwoHead = twoHead;
                 network.m_Sites[i] = site;
             }
         }

@@ -8,17 +8,6 @@ using Unity.Entities;
 
 namespace RailwaySignals
 {
-    /// <summary>
-    /// How a three position head shows "reduce to medium speed", which has no lamp of its own.
-    /// </summary>
-    public enum MediumIndication
-    {
-        /// <summary>Flash the green lamp. Needs an animation curve on that lamp in the asset.</summary>
-        FlashingGreen,
-        /// <summary>Light yellow and green together, as a two headed signal would.</summary>
-        YellowOverGreen
-    }
-
     [FileLocation(nameof(RailwaySignals))]
     [SettingsUIGroupOrder(kGeneralGroup, kBlockGroup, kSpeedGroup, kPlacementGroup)]
     [SettingsUIShowGroupName(kGeneralGroup, kBlockGroup, kSpeedGroup, kPlacementGroup)]
@@ -71,9 +60,6 @@ namespace RailwaySignals
         [SettingsUISection(kSection, kSpeedGroup)]
         public int mediumSpeedBlockLength { get; set; }
 
-        [SettingsUISection(kSection, kSpeedGroup)]
-        public MediumIndication mediumIndication { get; set; }
-
         [SettingsUISlider(min = 0f, max = 30f, step = 0.5f, unit = Unit.kLength, scalarMultiplier = 1f)]
         [SettingsUISection(kSection, kPlacementGroup)]
         public float signalSetback { get; set; }
@@ -81,6 +67,11 @@ namespace RailwaySignals
         [SettingsUISlider(min = 0f, max = 10f, step = 0.25f, unit = Unit.kLength, scalarMultiplier = 1f)]
         [SettingsUISection(kSection, kPlacementGroup)]
         public float signalOffset { get; set; }
+
+        /// <summary>How far below the top head the medium speed head is dropped, in metres.</summary>
+        [SettingsUISlider(min = 0f, max = 5f, step = 0.25f, unit = Unit.kLength, scalarMultiplier = 1f)]
+        [SettingsUISection(kSection, kPlacementGroup)]
+        public float bottomHeadDrop { get; set; }
 
         /// <summary>Asset for home signals, which are interlocked. Empty picks one automatically.</summary>
         [SettingsUITextInput]
@@ -91,6 +82,11 @@ namespace RailwaySignals
         [SettingsUITextInput]
         [SettingsUISection(kSection, kPlacementGroup)]
         public string automaticSignalPrefabName { get; set; }
+
+        /// <summary>Asset for the medium speed head hung below the top one. Empty picks one automatically.</summary>
+        [SettingsUITextInput]
+        [SettingsUISection(kSection, kPlacementGroup)]
+        public string bottomHeadPrefabName { get; set; }
 
         [SettingsUIButton]
         [SettingsUISection(kSection, kPlacementGroup)]
@@ -129,12 +125,13 @@ namespace RailwaySignals
             intermediateOnBidirectionalTrack = false;
             signalSetback = 6f;
             signalOffset = 3.5f;
+            bottomHeadDrop = 0f;
             mediumSpeedCurveRadius = 300;
             mediumSpeedLimit = 70;
             mediumSpeedBlockLength = 120;
-            mediumIndication = MediumIndication.FlashingGreen;
             homeSignalPrefabName = string.Empty;
             automaticSignalPrefabName = string.Empty;
+            bottomHeadPrefabName = string.Empty;
         }
 
         public override void Apply()

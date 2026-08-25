@@ -48,10 +48,11 @@ namespace RailwaySignals
                 { m_Setting.GetOptionLabelLocaleID(nameof(Setting.mediumSpeedBlockLength)), "Medium speed block length" },
                 { m_Setting.GetOptionDescLocaleID(nameof(Setting.mediumSpeedBlockLength)), "Blocks shorter than this are taken as cramped geometry, which is what a junction throat looks like, and are signalled at medium speed." },
 
-                { m_Setting.GetOptionLabelLocaleID(nameof(Setting.mediumIndication)), "Reduce to medium indication" },
-                { m_Setting.GetOptionDescLocaleID(nameof(Setting.mediumIndication)), "How a clear signal warns that the next signal is a medium speed one. Flashing green suits a single head; yellow over green suits a signal modelled with two heads." },
-                { $"Options.{nameof(MediumIndication)}[{nameof(MediumIndication.FlashingGreen)}]", "Flashing green" },
-                { $"Options.{nameof(MediumIndication)}[{nameof(MediumIndication.YellowOverGreen)}]", "Yellow over green" },
+                { m_Setting.GetOptionLabelLocaleID(nameof(Setting.bottomHeadDrop)), "Medium speed head drop" },
+                { m_Setting.GetOptionDescLocaleID(nameof(Setting.bottomHeadDrop)), "How far below the top head the medium speed head is placed. Leave at zero when the head asset positions its own lamps on the mast; raise it to tell two stand-in assets apart." },
+
+                { m_Setting.GetOptionLabelLocaleID(nameof(Setting.bottomHeadPrefabName)), "Medium speed head asset" },
+                { m_Setting.GetOptionDescLocaleID(nameof(Setting.bottomHeadPrefabName)), "Name of the object asset for the lower head, which carries the medium speed indications. It is placed at the same position as the top head, so its lamps should sit at the right height on the mast in the asset itself. Leave empty to pick one automatically." },
 
                 { m_Setting.GetOptionLabelLocaleID(nameof(Setting.signalSetback)), "Set back from boundary" },
                 { m_Setting.GetOptionDescLocaleID(nameof(Setting.signalSetback)), "How far short of the block boundary the post stands." },
