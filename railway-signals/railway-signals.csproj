@@ -158,4 +158,17 @@
 		<Message Text="Run post processor: $(ModPostProcessorArgs)" Importance="high" />
 		<Exec Command="$(ModPostProcessorArgs)" LogStandardErrorAsError="false" StandardErrorImportance="low" />
 	</Target>
+
+	<!--
+	  Ship the exported signal assets alongside the assembly. The game's User asset database covers
+	  the whole user data folder recursively, and LoadPrefabs registers every PrefabAsset it finds
+	  there, so assets dropped into the deployed mod folder are picked up with no code to load them.
+	-->
+	<Target Name="DeployModAssets" AfterTargets="DeployWIP" Condition="'$(NeedBuild)'">
+		<ItemGroup>
+			<ModAsset Include="Assets\**\*" Exclude="Assets\**\*.md" />
+		</ItemGroup>
+		<Copy SourceFiles="@(ModAsset)" DestinationFiles="@(ModAsset->'$(DeployDir)\Assets\%(RecursiveDir)%(Filename)%(Extension)')" Condition="'@(ModAsset)' != ''" />
+		<Message Text="Copied %(ModAsset.Identity)" Importance="normal" Condition="'@(ModAsset)' != ''" />
+	</Target>
 </Project>

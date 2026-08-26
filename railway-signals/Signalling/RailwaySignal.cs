@@ -24,15 +24,30 @@ namespace RailwaySignals.Signalling
         Clear
     }
 
-    /// <summary>Which asset a signal post is built from.</summary>
+    /// <summary>
+    /// The separate objects a signal is assembled from. Heads are modelled without a mast so the
+    /// same ones serve on a lineside post and hung from a bridge.
+    /// </summary>
     public enum SignalAsset : byte
     {
-        /// <summary>Mast and top head for an interlocked signal.</summary>
-        Home,
-        /// <summary>Mast and top head for an automatic, which carries an "A" plate.</summary>
-        Automatic,
-        /// <summary>The medium speed head, hung below the top one on the same mast.</summary>
-        BottomHead
+        /// <summary>The post a lineside signal stands on. Not used on a bridge.</summary>
+        Mast,
+        /// <summary>Normal speed head of an interlocked signal.</summary>
+        HomeHead,
+        /// <summary>Normal speed head of an automatic, which carries an "A" plate.</summary>
+        AutomaticHead,
+        /// <summary>Medium speed head, hung below the normal speed one.</summary>
+        BottomHead,
+        /// <summary>The bridge spanning a group of parallel tracks.</summary>
+        Gantry
+    }
+
+    /// <summary>
+    /// Marks every object this mod puts up, whatever part of a signal it is, so a rebuild can clear
+    /// the previous one out. The plan owns which entity is which; this is only for their lifetime.
+    /// </summary>
+    public struct RailwaySignalPart : IComponentData, IQueryTypeParameter, IEmptySerializable
+    {
     }
 
     /// <summary>One lamp of a signal head.</summary>
@@ -81,12 +96,6 @@ namespace RailwaySignals.Signalling
 
         public SignalAspect m_Aspect;
 
-        /// <summary>
-        /// The medium speed head, a second object at the same position with its own lamps. A signal
-        /// that can never show a medium indication is single headed and leaves this null.
-        /// </summary>
-        public Entity m_BottomHead;
-
         public DirectedLane Approach => new DirectedLane(m_Lane, m_Forward);
 
         public void Serialize<TWriter>(TWriter writer) where TWriter : IWriter
@@ -96,7 +105,6 @@ namespace RailwaySignals.Signalling
             writer.Write((byte)m_Class);
             writer.Write((byte)m_Speed);
             writer.Write((byte)m_Aspect);
-            writer.Write(m_BottomHead);
         }
 
         public void Deserialize<TReader>(TReader reader) where TReader : IReader
@@ -106,7 +114,6 @@ namespace RailwaySignals.Signalling
             reader.Read(out byte signalClass);
             reader.Read(out byte speed);
             reader.Read(out byte aspect);
-            reader.Read(out m_BottomHead);
             m_Class = (SignalClass)signalClass;
             m_Speed = (SignalSpeed)speed;
             m_Aspect = (SignalAspect)aspect;

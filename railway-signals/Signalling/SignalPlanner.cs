@@ -48,7 +48,22 @@ namespace RailwaySignals.Signalling
         /// <summary>Blocks no longer than this, in metres, are cramped enough to be medium speed.</summary>
         public float m_MediumBlockLength;
 
+        /// <summary>Fewest parallel tracks that warrant a signal bridge. Zero disables them.</summary>
+        public int m_MinGantryTracks;
+
+        /// <summary>Widest gap between neighbouring tracks that still counts as the same group, in metres.</summary>
+        public float m_MaxGantryTrackSpacing;
+
+        /// <summary>How far apart along the track two signals can be and still share a bridge, in metres.</summary>
+        public float m_GantryAlignTolerance;
+
+        /// <summary>Structure width added beyond the outermost track, in metres.</summary>
+        public float m_GantryMargin;
+
         private const int kMaxBlockLanes = 512;
+
+        /// <summary>Tracks must run within about 20 degrees of each other to share a bridge.</summary>
+        private const float kParallelDot = 0.94f;
 
         public void Plan(NativeList<Entity> trackLanes, ref SignalNetwork network)
         {
@@ -61,6 +76,7 @@ namespace RailwaySignals.Signalling
             PlaceIntermediateSignals(trackLanes, ref network, ref scratch, ref scratch2);
             BuildBlocks(ref network, ref scratch);
             ClassifySignals(ref network, ref scratch);
+            PlanGantries(ref network);
 
             scratch.Dispose();
             scratch2.Dispose();
@@ -297,7 +313,7 @@ namespace RailwaySignals.Signalling
             {
                 return;
             }
-            GetPlacement(approach, out float3 position, out quaternion rotation);
+            GetPlacement(approach, out float3 position, out quaternion rotation, out float3 trackPosition, out float3 travel);
             network.m_SiteByApproach.Add(approach, network.m_Sites.Length);
             network.m_Sites.Add(new SignalSiteData
             {
@@ -306,6 +322,9 @@ namespace RailwaySignals.Signalling
                 m_Signal = Entity.Null,
                 m_Position = position,
                 m_Rotation = rotation,
+                m_TrackPosition = trackPosition,
+                m_Direction = travel,
+                m_Gantry = -1,
                 m_Class = SignalClass.Home,
                 m_Speed = SignalSpeed.Normal,
                 m_Aspect = SignalAspect.Stop
@@ -316,19 +335,19 @@ namespace RailwaySignals.Signalling
         /// Puts the post beside the track on the driver's side, set back from the boundary, with its
         /// forward axis pointing at the approaching train.
         /// </summary>
-        private void GetPlacement(DirectedLane approach, out float3 position, out quaternion rotation)
+        private void GetPlacement(DirectedLane approach, out float3 position, out quaternion rotation, out float3 trackPosition, out float3 travel)
         {
             Bezier4x3 bezier = m_Graph.m_CurveData[approach.m_Lane].m_Bezier;
             float length = math.max(1f, m_Graph.GetLength(approach.m_Lane));
             float setback = math.saturate(m_Setback / length);
             float t = approach.m_Forward ? 1f - setback : setback;
 
-            position = MathUtils.Position(bezier, t);
+            trackPosition = MathUtils.Position(bezier, t);
             float3 tangent = math.normalizesafe(MathUtils.Tangent(bezier, t), new float3(0f, 0f, 1f));
-            float3 travel = approach.m_Forward ? tangent : -tangent;
+            travel = approach.m_Forward ? tangent : -tangent;
             float3 right = math.normalizesafe(math.cross(math.up(), travel), new float3(1f, 0f, 0f));
 
-            position += right * (m_LeftHandTraffic ? -m_LateralOffset : m_LateralOffset);
+            position = trackPosition + right * (m_LeftHandTraffic ? -m_LateralOffset : m_LateralOffset);
             rotation = quaternion.LookRotationSafe(-travel, math.up());
         }
 
@@ -444,6 +463,143 @@ namespace RailwaySignals.Signalling
             scratch.Clear();
             m_Graph.GetPredecessors(lane, ref scratch);
             return scratch.Length > 1;
+        }
+
+        /// <summary>
+        /// Groups signals that face the same way and stand abreast of each other onto signal
+        /// bridges. Signals over a group are lifted from the lineside to above their own track and
+        /// squared up onto the line of the structure, which is what makes a bridge readable: every
+        /// head in one row, each one plainly over the track it applies to.
+        /// </summary>
+        private void PlanGantries(ref SignalNetwork network)
+        {
+            if (m_MinGantryTracks <= 0 || network.m_Sites.Length < m_MinGantryTracks)
+            {
+                return;
+            }
+            var group = new NativeList<int>(8, Allocator.Temp);
+            var taken = new NativeArray<bool>(network.m_Sites.Length, Allocator.Temp);
+
+            for (int i = 0; i < network.m_Sites.Length; i++)
+            {
+                if (taken[i])
+                {
+                    continue;
+                }
+                group.Clear();
+                group.Add(i);
+                taken[i] = true;
+                CollectAbreast(ref network, i, ref group, ref taken);
+
+                if (group.Length >= m_MinGantryTracks)
+                {
+                    AddGantry(ref network, group);
+                }
+                else
+                {
+                    // Left ungrouped, but still not offered to another group: a signal belongs to
+                    // at most one bridge, and re-testing it from a neighbour would just rebuild the
+                    // same undersized group.
+                    for (int j = 1; j < group.Length; j++)
+                    {
+                        taken[group[j]] = false;
+                    }
+                }
+            }
+            group.Dispose();
+            taken.Dispose();
+        }
+
+        /// <summary>
+        /// Grows a group outwards one track at a time, so a wide formation is gathered by stepping
+        /// across neighbouring tracks rather than by requiring every track to be near the first.
+        /// </summary>
+        private void CollectAbreast(ref SignalNetwork network, int seed, ref NativeList<int> group, ref NativeArray<bool> taken)
+        {
+            for (int head = 0; head < group.Length; head++)
+            {
+                SignalSiteData from = network.m_Sites[group[head]];
+                for (int i = 0; i < network.m_Sites.Length; i++)
+                {
+                    if (taken[i])
+                    {
+                        continue;
+                    }
+                    SignalSiteData candidate = network.m_Sites[i];
+                    if (math.dot(from.m_Direction, candidate.m_Direction) < kParallelDot)
+                    {
+                        continue;
+                    }
+                    float3 delta = candidate.m_TrackPosition - from.m_TrackPosition;
+                    float along = math.dot(delta, from.m_Direction);
+                    if (math.abs(along) > m_GantryAlignTolerance)
+                    {
+                        continue;
+                    }
+                    float across = math.length(delta - from.m_Direction * along);
+                    if (across > m_MaxGantryTrackSpacing)
+                    {
+                        continue;
+                    }
+                    taken[i] = true;
+                    group.Add(i);
+                }
+            }
+        }
+
+        private void AddGantry(ref SignalNetwork network, NativeList<int> group)
+        {
+            float3 direction = float3.zero;
+            float3 centre = float3.zero;
+            for (int i = 0; i < group.Length; i++)
+            {
+                SignalSiteData site = network.m_Sites[group[i]];
+                direction += site.m_Direction;
+                centre += site.m_TrackPosition;
+            }
+            direction = math.normalizesafe(direction / group.Length, new float3(0f, 0f, 1f));
+            centre /= group.Length;
+            float3 right = math.normalizesafe(math.cross(math.up(), direction), new float3(1f, 0f, 0f));
+
+            // Square the structure across the group: one line, at the mean distance along the track.
+            float alongCentre = math.dot(centre, direction);
+            float acrossMin = float.MaxValue;
+            float acrossMax = float.MinValue;
+            float railLevel = float.MinValue;
+            for (int i = 0; i < group.Length; i++)
+            {
+                float3 trackPosition = network.m_Sites[group[i]].m_TrackPosition;
+                float across = math.dot(trackPosition - centre, right);
+                acrossMin = math.min(acrossMin, across);
+                acrossMax = math.max(acrossMax, across);
+                railLevel = math.max(railLevel, trackPosition.y);
+            }
+
+            int gantry = network.m_Gantries.Length;
+            float3 position = centre + right * ((acrossMin + acrossMax) * 0.5f);
+            position += direction * (alongCentre - math.dot(position, direction));
+            position.y = railLevel;
+
+            network.m_Gantries.Add(new GantryData
+            {
+                m_Position = position,
+                m_Rotation = quaternion.LookRotationSafe(-direction, math.up()),
+                m_Span = (acrossMax - acrossMin) * 0.5f + m_GantryMargin,
+                m_Owner = m_Graph.m_OwnerData.TryGetComponent(network.m_Sites[group[0]].m_Approach.m_Lane, out var owner) ? owner.m_Owner : Entity.Null,
+                m_Entity = Entity.Null
+            });
+
+            for (int i = 0; i < group.Length; i++)
+            {
+                SignalSiteData site = network.m_Sites[group[i]];
+                float3 head = site.m_TrackPosition;
+                head += direction * (alongCentre - math.dot(head, direction));
+                head.y = railLevel;
+                site.m_Position = head;
+                site.m_Rotation = quaternion.LookRotationSafe(-direction, math.up());
+                site.m_Gantry = gantry;
+                network.m_Sites[group[i]] = site;
+            }
         }
 
         private static void AddUnique(int value, int start, ref NativeList<int> list)

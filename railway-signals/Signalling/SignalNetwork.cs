@@ -21,6 +21,9 @@ namespace RailwaySignals.Signalling
         /// <summary>Net entity the placed object hangs off, so it dies with the track.</summary>
         public Entity m_Owner;
 
+        /// <summary>The post, on a lineside signal. Null on one carried by a bridge.</summary>
+        public Entity m_Mast;
+
         /// <summary>Placed object entity for the top head, or Null while the site has no object yet.</summary>
         public Entity m_Signal;
 
@@ -34,10 +37,38 @@ namespace RailwaySignals.Signalling
 
         public quaternion m_Rotation;
 
+        /// <summary>Centre of the track at the signal, before the post is offset to the side.</summary>
+        public float3 m_TrackPosition;
+
+        /// <summary>Unit vector along the direction of travel past the signal.</summary>
+        public float3 m_Direction;
+
+        /// <summary>Index into <see cref="SignalNetwork.m_Gantries"/>, or -1 for a line-side post.</summary>
+        public int m_Gantry;
+
         public SignalAspect m_Aspect;
 
         /// <summary>Set during the aspect pass when something stands in or is claiming the block.</summary>
         public bool m_Blocked;
+    }
+
+    /// <summary>
+    /// A signal bridge carrying the heads for a group of parallel tracks. One object entity spans
+    /// the group: the game tiles the beam mesh between the leg meshes to fill <see cref="m_Span"/>.
+    /// </summary>
+    public struct GantryData
+    {
+        public float3 m_Position;
+
+        public quaternion m_Rotation;
+
+        /// <summary>Half width of the structure, measured out from the position along its own X axis.</summary>
+        public float m_Span;
+
+        /// <summary>Net entity the structure hangs off, so it dies with the track.</summary>
+        public Entity m_Owner;
+
+        public Entity m_Entity;
     }
 
     /// <summary>
@@ -62,6 +93,8 @@ namespace RailwaySignals.Signalling
         /// <summary>Maps an approach lane to the site standing at its exit.</summary>
         public NativeParallelHashMap<DirectedLane, int> m_SiteByApproach;
 
+        public NativeList<GantryData> m_Gantries;
+
         public bool m_IsCreated;
 
         public static SignalNetwork Create(Allocator allocator)
@@ -74,6 +107,7 @@ namespace RailwaySignals.Signalling
                 m_Successors = new NativeList<int>(512, allocator),
                 m_SuccessorRanges = new NativeList<int2>(256, allocator),
                 m_SiteByApproach = new NativeParallelHashMap<DirectedLane, int>(256, allocator),
+                m_Gantries = new NativeList<GantryData>(32, allocator),
                 m_IsCreated = true
             };
         }
@@ -86,6 +120,7 @@ namespace RailwaySignals.Signalling
             m_Successors.Clear();
             m_SuccessorRanges.Clear();
             m_SiteByApproach.Clear();
+            m_Gantries.Clear();
         }
 
         public void Dispose()
@@ -100,6 +135,7 @@ namespace RailwaySignals.Signalling
             m_Successors.Dispose();
             m_SuccessorRanges.Dispose();
             m_SiteByApproach.Dispose();
+            m_Gantries.Dispose();
             m_IsCreated = false;
         }
     }

@@ -9,8 +9,8 @@ using Unity.Entities;
 namespace RailwaySignals
 {
     [FileLocation(nameof(RailwaySignals))]
-    [SettingsUIGroupOrder(kGeneralGroup, kBlockGroup, kSpeedGroup, kPlacementGroup)]
-    [SettingsUIShowGroupName(kGeneralGroup, kBlockGroup, kSpeedGroup, kPlacementGroup)]
+    [SettingsUIGroupOrder(kGeneralGroup, kBlockGroup, kSpeedGroup, kPlacementGroup, kGantryGroup)]
+    [SettingsUIShowGroupName(kGeneralGroup, kBlockGroup, kSpeedGroup, kPlacementGroup, kGantryGroup)]
     public class Setting : ModSetting
     {
         public const string kSection = "Main";
@@ -22,6 +22,8 @@ namespace RailwaySignals
         public const string kSpeedGroup = "Speeds";
 
         public const string kPlacementGroup = "Placement";
+
+        public const string kGantryGroup = "Gantries";
 
         public Setting(IMod mod)
             : base(mod)
@@ -68,25 +70,61 @@ namespace RailwaySignals
         [SettingsUISection(kSection, kPlacementGroup)]
         public float signalOffset { get; set; }
 
-        /// <summary>How far below the top head the medium speed head is dropped, in metres.</summary>
-        [SettingsUISlider(min = 0f, max = 5f, step = 0.25f, unit = Unit.kLength, scalarMultiplier = 1f)]
+        /// <summary>Height of the normal speed head above rail level on a lineside post, in metres.</summary>
+        [SettingsUISlider(min = 1f, max = 10f, step = 0.25f, unit = Unit.kLength, scalarMultiplier = 1f)]
         [SettingsUISection(kSection, kPlacementGroup)]
-        public float bottomHeadDrop { get; set; }
+        public float signalHeadHeight { get; set; }
 
-        /// <summary>Asset for home signals, which are interlocked. Empty picks one automatically.</summary>
+        /// <summary>Gap between the normal speed head and the medium speed head below it, in metres.</summary>
+        [SettingsUISlider(min = 0.25f, max = 4f, step = 0.05f, unit = Unit.kLength, scalarMultiplier = 1f)]
+        [SettingsUISection(kSection, kPlacementGroup)]
+        public float headSpacing { get; set; }
+
+        /// <summary>Asset for the post a lineside signal stands on. Without one, heads have no mast.</summary>
         [SettingsUITextInput]
         [SettingsUISection(kSection, kPlacementGroup)]
-        public string homeSignalPrefabName { get; set; }
+        public string mastPrefabName { get; set; }
 
-        /// <summary>Asset for automatic signals, which carry an "A" plate. Empty picks one automatically.</summary>
+        /// <summary>Asset for the head of a home signal, which is interlocked. Empty picks one automatically.</summary>
         [SettingsUITextInput]
         [SettingsUISection(kSection, kPlacementGroup)]
-        public string automaticSignalPrefabName { get; set; }
+        public string homeHeadPrefabName { get; set; }
+
+        /// <summary>Asset for the head of an automatic, which carries an "A" plate. Empty picks one automatically.</summary>
+        [SettingsUITextInput]
+        [SettingsUISection(kSection, kPlacementGroup)]
+        public string automaticHeadPrefabName { get; set; }
 
         /// <summary>Asset for the medium speed head hung below the top one. Empty picks one automatically.</summary>
         [SettingsUITextInput]
         [SettingsUISection(kSection, kPlacementGroup)]
         public string bottomHeadPrefabName { get; set; }
+
+        /// <summary>Fewest parallel tracks that get a signal bridge instead of lineside posts. Zero disables them.</summary>
+        [SettingsUISlider(min = 0, max = 8, step = 1, unit = Unit.kInteger)]
+        [SettingsUISection(kSection, kGantryGroup)]
+        public int minGantryTracks { get; set; }
+
+        [SettingsUISlider(min = 4f, max = 30f, step = 0.5f, unit = Unit.kLength, scalarMultiplier = 1f)]
+        [SettingsUISection(kSection, kGantryGroup)]
+        public float maxGantryTrackSpacing { get; set; }
+
+        [SettingsUISlider(min = 1f, max = 60f, step = 1f, unit = Unit.kLength, scalarMultiplier = 1f)]
+        [SettingsUISection(kSection, kGantryGroup)]
+        public float gantryAlignTolerance { get; set; }
+
+        [SettingsUISlider(min = 0f, max = 10f, step = 0.25f, unit = Unit.kLength, scalarMultiplier = 1f)]
+        [SettingsUISection(kSection, kGantryGroup)]
+        public float gantryMargin { get; set; }
+
+        [SettingsUISlider(min = 3f, max = 12f, step = 0.25f, unit = Unit.kLength, scalarMultiplier = 1f)]
+        [SettingsUISection(kSection, kGantryGroup)]
+        public float gantryHeadHeight { get; set; }
+
+        /// <summary>Asset for the signal bridge. Without one, grouped signals stay on lineside posts.</summary>
+        [SettingsUITextInput]
+        [SettingsUISection(kSection, kGantryGroup)]
+        public string gantryPrefabName { get; set; }
 
         [SettingsUIButton]
         [SettingsUISection(kSection, kPlacementGroup)]
@@ -125,13 +163,21 @@ namespace RailwaySignals
             intermediateOnBidirectionalTrack = false;
             signalSetback = 6f;
             signalOffset = 3.5f;
-            bottomHeadDrop = 0f;
+            signalHeadHeight = 4f;
+            headSpacing = 1.1f;
             mediumSpeedCurveRadius = 300;
             mediumSpeedLimit = 70;
             mediumSpeedBlockLength = 120;
-            homeSignalPrefabName = string.Empty;
-            automaticSignalPrefabName = string.Empty;
+            mastPrefabName = string.Empty;
+            homeHeadPrefabName = string.Empty;
+            automaticHeadPrefabName = string.Empty;
             bottomHeadPrefabName = string.Empty;
+            minGantryTracks = 3;
+            maxGantryTrackSpacing = 12f;
+            gantryAlignTolerance = 15f;
+            gantryMargin = 2f;
+            gantryHeadHeight = 5.5f;
+            gantryPrefabName = string.Empty;
         }
 
         public override void Apply()

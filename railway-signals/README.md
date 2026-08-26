@@ -16,6 +16,13 @@ would have let through.
 Signals stand on the driver's side, following the city's left or right hand running, set back
 from the boundary they govern and facing the approaching train.
 
+Where enough tracks run abreast and their signals face the same way, those signals come off their
+lineside posts and go onto a **signal bridge** instead: one structure spanning the group, with a
+head over each track. The group is gathered one track at a time, so a wide formation is picked up
+as long as each step across is within the track spacing setting, and the signals are squared onto
+the line of the structure so every head reads as one row. How many tracks it takes is a setting,
+three by default, which is roughly where a bridge stops being a bracket.
+
 Each signal is also classified two ways:
 
 - **Home or automatic.** A signal whose block contains pointwork, a crossing or a platform has
@@ -57,30 +64,94 @@ routes through a junction interlock.
 
 The mod does not draw anything itself. It sets `Game.Objects.TrafficLight.m_State` and the base
 game lights the lamps. That component drives one three-lamp head, so **each head is its own
-object**, and a two headed signal is two objects sharing a position. Three assets are needed:
+object**, and a signal is assembled from separate parts. Heads are modelled *without* a mast, which
+is what lets the same head serve on a lineside post and hung from a bridge.
 
-| Asset | What it is |
-| --- | --- |
-| Home signal | Mast, both head housings, and the top head's three lamps |
-| Automatic signal | The same with an "A" plate |
-| Medium speed head | The lower head's three lamps alone, no mast |
+### What to model
 
-Each of the three needs:
+| # | Asset | Meshes | Contents |
+| --- | --- | --- | --- |
+| 1 | Mast | 1, or 3 as a stack | The post alone. No lamps |
+| 2 | Home signal head | 1 | Housing and three lamps |
+| 3 | Automatic signal head | 1 | The same with an "A" plate |
+| 4 | Medium speed head | 1 | The lower head. Usually the same casting as 2 |
+| 5 | Signal bridge | 3 | Leg, beam section, leg |
+
+Seven meshes, or nine if you make the mast a stack. Fewer if you reuse: the medium speed head is
+normally identical to the home signal head, so you can point both settings at one asset and model
+six. The two bridge legs can be one mesh used twice.
+
+### The heads (2, 3, 4)
+
+Each needs:
 
 1. A **`TrafficLightObject`** component. This is what puts `Game.Objects.TrafficLight` into the
    instance archetype. Without it the mod will not use the asset at all.
-2. An **`EmissiveProperties`** component with one light mapped to each of the purposes
-   `TrafficLight_Red`, `TrafficLight_Yellow` and `TrafficLight_Green`.
+2. An **`EmissiveProperties`** component with one light per lamp, assigned the purposes
+   `TrafficLight_Red`, `TrafficLight_Yellow` and `TrafficLight_Green`. The purposes are what the
+   mod addresses, so the lamps can sit in any order on the model.
 
-The two heads are placed at the same position and rotation, so the medium speed head asset should
-carry its lamps at their real height on the mast. If you would rather offset it, the "medium speed
-head drop" setting lowers it.
+Put the **pivot at the centre of the head**, not at the ground, since the mod places heads at a
+height above rail. The **+Z axis faces the approaching train**.
 
-The model's **+Z axis faces the approaching train**, so the lamps should point along +Z.
+### The mast (1)
 
-Name the assets and put those names in the mod's settings under "Signal posts". Until then the
-mod stands in a vanilla road traffic light for all three, which will stack both heads at one
-spot; raise the head drop setting to tell them apart while testing.
+Plain geometry, no lamps and no `TrafficLightObject`. Pivot at rail level, growing upwards.
+
+Model it either at a fixed height matching the "head height above rail" setting, or as a **stack**
+so the setting drives it: three meshes each carrying a **`StackProperties`** component with
+`m_Direction = Up`, ordered `First` (base), `Middle` (a shaft section) and `Last` (cap). The mod
+then stretches the shaft to reach whatever height is set.
+
+### The signal bridge (5)
+
+One object however many tracks it spans, because the game can tile a mesh along an axis. Three
+meshes, each with a **`StackProperties`** component with `m_Direction = Right`:
+
+| Mesh | `m_Order` |
+| --- | --- |
+| Leg | `First` |
+| Beam section | `Middle` |
+| Leg | `Last` |
+
+A mesh with `StackProperties` gives the prefab `StackData` and its instances `Game.Objects.Stack`,
+and the mod sets the span. The beam is repeated between the legs to fill it, so one asset covers
+two tracks or ten. Set `m_ForbidScaling` on the beam if you would rather it tiled at its natural
+width than stretched to fit exactly.
+
+Pivot at rail level with the X axis across the tracks. Match the "head height above rail" setting
+in the bridge group to where your beam sits, since that is what the heads hang at.
+
+### Creating them
+
+Assets are authored as FBX plus textures and imported by the game's own Editor, not through Unity.
+The Unity project the build refers to is only there to supply Burst.
+
+1. Model each mesh and export an `.fbx`.
+2. Author textures named after the mesh with the suffixes the importer expects:
+   `_BaseColor`, `_Normal`, `_MaskMap`, `_ControlMask`, and for the heads the emissive maps.
+3. Drop a `settings.json` beside them to control LOD generation.
+4. Open the game, go to the **Editor**, and use the **Asset Import** tool on that folder.
+5. Add the components above to the imported prefab and save it.
+
+The toolchain ships worked examples of exactly this layout under
+`Cities2_Data/Content/Game/.ModdingToolchain/ExampleAssets`. `ExampleEmissiveUfoSign` is the one to
+copy for the heads, since it shows how several separately controlled lights are mapped on one mesh.
+
+### Bundling them with the mod
+
+Copy each exported asset's files into this project's `Assets/` folder. An asset is a set of files
+sharing a name: `.Prefab`, `.Geometry`, `.Surface`, `.Texture`. The build copies the folder into
+the deployed mod directory.
+
+Nothing has to load them. The game's User asset database covers the whole user data folder
+recursively, and prefab loading registers every prefab asset it finds there, so anything sitting in
+the deployed mod folder is already available. Put the asset names into the mod's settings and they
+are used.
+
+Until assets are installed the mod stands in a vanilla road traffic light for the heads, which
+brings its own pole, so no mast is placed. There is no stand-in for a bridge: grouping is skipped
+entirely and every signal stays on a lineside post.
 
 ## Building
 

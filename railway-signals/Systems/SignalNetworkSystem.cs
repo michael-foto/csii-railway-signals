@@ -1,3 +1,4 @@
+using Colossal.Mathematics;
 using Game;
 using Game.City;
 using Game.Common;
@@ -25,6 +26,8 @@ namespace RailwaySignals.Systems
         private EntityQuery m_ChangedTrackQuery;
 
         private EntityQuery m_SignalQuery;
+
+        private EntityQuery m_PartQuery;
 
         private SignalPrefabSystem m_SignalPrefabSystem;
 
@@ -65,7 +68,16 @@ namespace RailwaySignals.Systems
                 All = new[] { ComponentType.ReadOnly<Game.Net.TrackLane>() },
                 Any = new[] { ComponentType.ReadOnly<Created>(), ComponentType.ReadOnly<Updated>(), ComponentType.ReadOnly<Deleted>() }
             });
-            m_SignalQuery = GetEntityQuery(ComponentType.ReadOnly<RailwaySignal>());
+            m_SignalQuery = GetEntityQuery(new EntityQueryDesc
+            {
+                All = new[] { ComponentType.ReadOnly<RailwaySignal>() },
+                None = new[] { ComponentType.ReadOnly<Deleted>() }
+            });
+            m_PartQuery = GetEntityQuery(new EntityQueryDesc
+            {
+                All = new[] { ComponentType.ReadOnly<RailwaySignalPart>() },
+                None = new[] { ComponentType.ReadOnly<Deleted>() }
+            });
         }
 
         protected override void OnDestroy()
@@ -86,7 +98,7 @@ namespace RailwaySignals.Systems
         public void Clear()
         {
             CompleteDependency();
-            EntityManager.DestroyEntity(m_SignalQuery);
+            EntityManager.DestroyEntity(m_PartQuery);
             m_Network.Clear();
             m_Dirty = false;
         }
@@ -125,6 +137,12 @@ namespace RailwaySignals.Systems
         {
             CompleteDependency();
 
+            bool hasGantryAsset = m_SignalPrefabSystem.GetSignalPrefab(SignalAsset.Gantry) != Entity.Null;
+            if (!hasGantryAsset && Mod.setting.minGantryTracks > 0)
+            {
+                Mod.log.Info("No signal bridge asset is installed, so every signal goes on a lineside post.");
+            }
+
             NativeList<Entity> trackLanes = CollectSignalledTrackLanes(out TrackGraph graph);
             var planner = new SignalPlanner
             {
@@ -137,14 +155,18 @@ namespace RailwaySignals.Systems
                 m_LeftHandTraffic = m_CityConfigurationSystem.leftHandTraffic,
                 m_MediumCurviness = 1f / math.max(1f, Mod.setting.mediumSpeedCurveRadius),
                 m_MediumSpeedLimit = Mod.setting.mediumSpeedLimit / 3.6f,
-                m_MediumBlockLength = Mod.setting.mediumSpeedBlockLength
+                m_MediumBlockLength = Mod.setting.mediumSpeedBlockLength,
+                m_MinGantryTracks = hasGantryAsset ? Mod.setting.minGantryTracks : 0,
+                m_MaxGantryTrackSpacing = Mod.setting.maxGantryTrackSpacing,
+                m_GantryAlignTolerance = Mod.setting.gantryAlignTolerance,
+                m_GantryMargin = Mod.setting.gantryMargin
             };
             planner.Plan(trackLanes, ref m_Network);
             trackLanes.Dispose();
 
-            ReconcileSignalObjects();
+            PlaceSignalObjects();
 
-            Mod.log.Info($"Signal plan rebuilt: {m_Network.m_Sites.Length} signals over {m_Network.m_BlockLanes.Length} block lanes.");
+            Mod.log.Info($"Signal plan rebuilt: {m_Network.m_Sites.Length} signals over {m_Network.m_BlockLanes.Length} block lanes, {m_Network.m_Gantries.Length} on bridges.");
         }
 
         private NativeList<Entity> CollectSignalledTrackLanes(out TrackGraph graph)
@@ -178,16 +200,23 @@ namespace RailwaySignals.Systems
         }
 
         /// <summary>
-        /// Matches the posts already in the world to the freshly planned sites by the boundary they
-        /// govern, moving those that survived, creating the new ones and destroying the rest. A
-        /// signal whose class changed needs a different asset, so it is rebuilt rather than moved.
-        /// Both heads of a two headed signal are separate objects sharing one transform, because a
-        /// head can only show three lamps and one TrafficLight component drives only one head.
+        /// Puts up every part of every signal. A signal is assembled from separate objects: a mast
+        /// where it stands on the ground, a normal speed head, and a medium speed head below it
+        /// where one is called for. Keeping the mast out of the head assets is what lets the same
+        /// heads serve both a lineside post and a bridge.
+        ///
+        /// The lot is torn down and rebuilt rather than matched up, because a plan only gets rebuilt
+        /// after the track has been left alone for a moment and the parts are cheap to replace.
         /// </summary>
-        private void ReconcileSignalObjects()
+        private void PlaceSignalObjects()
         {
-            var prefabs = new Entity[3];
-            var archetypes = new EntityArchetype[3];
+            if (!m_PartQuery.IsEmptyIgnoreFilter)
+            {
+                EntityManager.AddComponent<Deleted>(m_PartQuery);
+            }
+
+            var prefabs = new Entity[5];
+            var archetypes = new EntityArchetype[5];
             for (int i = 0; i < prefabs.Length; i++)
             {
                 prefabs[i] = m_SignalPrefabSystem.GetSignalPrefab((SignalAsset)i);
@@ -196,180 +225,72 @@ namespace RailwaySignals.Systems
                     archetypes[i] = EntityManager.GetComponentData<ObjectData>(prefabs[i]).m_Archetype;
                 }
             }
-            if (!archetypes[(int)SignalAsset.Home].Valid && !archetypes[(int)SignalAsset.Automatic].Valid)
+            if (!archetypes[(int)SignalAsset.HomeHead].Valid && !archetypes[(int)SignalAsset.AutomaticHead].Valid)
             {
-                Mod.log.Warn("No signal prefab with an instantiable archetype is available.");
+                Mod.log.Warn("No signal head asset with an instantiable archetype is available.");
                 return;
             }
 
-            NativeArray<Entity> existing = m_SignalQuery.ToEntityArray(Allocator.Temp);
-            var byApproach = new NativeParallelHashMap<DirectedLane, RailwaySignal>(math.max(1, existing.Length), Allocator.Temp);
-            var entityByApproach = new NativeParallelHashMap<DirectedLane, Entity>(math.max(1, existing.Length), Allocator.Temp);
-            for (int i = 0; i < existing.Length; i++)
-            {
-                RailwaySignal signal = EntityManager.GetComponentData<RailwaySignal>(existing[i]);
-                if (entityByApproach.TryAdd(signal.Approach, existing[i]))
-                {
-                    byApproach.TryAdd(signal.Approach, signal);
-                }
-                else
-                {
-                    DeleteSignal(existing[i], signal.m_BottomHead);
-                }
-            }
-
-            var newHome = new NativeList<int>(m_Network.m_Sites.Length, Allocator.Temp);
-            var newAutomatic = new NativeList<int>(m_Network.m_Sites.Length, Allocator.Temp);
-            var newBottom = new NativeList<int>(m_Network.m_Sites.Length, Allocator.Temp);
+            var masts = new NativeList<int>(m_Network.m_Sites.Length, Allocator.Temp);
+            var homeHeads = new NativeList<int>(m_Network.m_Sites.Length, Allocator.Temp);
+            var automaticHeads = new NativeList<int>(m_Network.m_Sites.Length, Allocator.Temp);
+            var bottomHeads = new NativeList<int>(m_Network.m_Sites.Length, Allocator.Temp);
 
             for (int i = 0; i < m_Network.m_Sites.Length; i++)
             {
                 SignalSiteData site = m_Network.m_Sites[i];
-                SignalAsset asset = site.m_Class == SignalClass.Automatic ? SignalAsset.Automatic : SignalAsset.Home;
-                Entity prefab = prefabs[(int)asset];
-                if (prefab == Entity.Null)
+                (site.m_Class == SignalClass.Automatic ? automaticHeads : homeHeads).Add(i);
+                if (site.m_Gantry < 0)
                 {
-                    continue;
+                    masts.Add(i);
                 }
-                var transform = new Game.Objects.Transform(site.m_Position, site.m_Rotation);
-
-                if (entityByApproach.TryGetValue(site.m_Approach, out Entity entity) && EntityManager.GetComponentData<PrefabRef>(entity).m_Prefab == prefab)
+                if (site.m_TwoHead)
                 {
-                    RailwaySignal previous = byApproach[site.m_Approach];
-                    entityByApproach.Remove(site.m_Approach);
-                    Move(entity, transform, site.m_Owner);
-                    site.m_Signal = entity;
-                    site.m_BottomHead = ReconcileBottomHead(site, previous.m_BottomHead, prefabs[(int)SignalAsset.BottomHead]);
-                    m_Network.m_Sites[i] = site;
-                    QueueBottomHead(i, newBottom);
-                }
-                else
-                {
-                    m_Network.m_Sites[i] = site;
-                    (site.m_Class == SignalClass.Automatic ? newAutomatic : newHome).Add(i);
+                    bottomHeads.Add(i);
                 }
             }
 
-            NativeArray<DirectedLane> staleKeys = entityByApproach.GetKeyArray(Allocator.Temp);
-            for (int i = 0; i < staleKeys.Length; i++)
-            {
-                DeleteSignal(entityByApproach[staleKeys[i]], byApproach[staleKeys[i]].m_BottomHead);
-            }
-
-            CreateHeads(archetypes[(int)SignalAsset.Home], prefabs[(int)SignalAsset.Home], newHome, bottomHead: false);
-            CreateHeads(archetypes[(int)SignalAsset.Automatic], prefabs[(int)SignalAsset.Automatic], newAutomatic, bottomHead: false);
-
-            // Sites that got a brand new top head above still need their bottom head queued.
-            for (int i = 0; i < newHome.Length; i++)
-            {
-                QueueBottomHead(newHome[i], newBottom);
-            }
-            for (int i = 0; i < newAutomatic.Length; i++)
-            {
-                QueueBottomHead(newAutomatic[i], newBottom);
-            }
-            CreateHeads(archetypes[(int)SignalAsset.BottomHead], prefabs[(int)SignalAsset.BottomHead], newBottom, bottomHead: true);
-
+            PlaceParts(archetypes, prefabs, SignalAsset.Mast, masts);
+            PlaceParts(archetypes, prefabs, SignalAsset.HomeHead, homeHeads);
+            PlaceParts(archetypes, prefabs, SignalAsset.AutomaticHead, automaticHeads);
+            PlaceParts(archetypes, prefabs, SignalAsset.BottomHead, bottomHeads);
+            PlaceGantries(archetypes[(int)SignalAsset.Gantry], prefabs[(int)SignalAsset.Gantry]);
             WriteSignalComponents();
 
-            staleKeys.Dispose();
-            newHome.Dispose();
-            newAutomatic.Dispose();
-            newBottom.Dispose();
-            entityByApproach.Dispose();
-            byApproach.Dispose();
-            existing.Dispose();
+            masts.Dispose();
+            homeHeads.Dispose();
+            automaticHeads.Dispose();
+            bottomHeads.Dispose();
         }
 
-        private void QueueBottomHead(int siteIndex, NativeList<int> queue)
+        private void PlaceParts(EntityArchetype[] archetypes, Entity[] prefabs, SignalAsset asset, NativeList<int> siteIndices)
         {
-            SignalSiteData site = m_Network.m_Sites[siteIndex];
-            if (site.m_TwoHead && site.m_Signal != Entity.Null && site.m_BottomHead == Entity.Null)
-            {
-                queue.Add(siteIndex);
-            }
-        }
-
-        /// <summary>Keeps, moves or drops the medium speed head a surviving signal already had.</summary>
-        private Entity ReconcileBottomHead(SignalSiteData site, Entity bottomHead, Entity bottomPrefab)
-        {
-            bool usable = bottomHead != Entity.Null
-                && EntityManager.Exists(bottomHead)
-                && bottomPrefab != Entity.Null
-                && EntityManager.GetComponentData<PrefabRef>(bottomHead).m_Prefab == bottomPrefab;
-
-            if (site.m_TwoHead && usable)
-            {
-                Move(bottomHead, HeadTransform(site, bottomHead: true), site.m_Owner);
-                return bottomHead;
-            }
-            if (bottomHead != Entity.Null && EntityManager.Exists(bottomHead))
-            {
-                EntityManager.AddComponent<Deleted>(bottomHead);
-            }
-            return Entity.Null;
-        }
-
-        /// <summary>
-        /// Where a head sits. Both heads share the mast, so the asset itself normally places its
-        /// lamps at the right height and the drop stays zero; it exists for stand-in assets that
-        /// would otherwise land on top of each other.
-        /// </summary>
-        private static Game.Objects.Transform HeadTransform(SignalSiteData site, bool bottomHead)
-        {
-            float3 position = site.m_Position;
-            if (bottomHead)
-            {
-                position.y -= Mod.setting.bottomHeadDrop;
-            }
-            return new Game.Objects.Transform(position, site.m_Rotation);
-        }
-
-        private void Move(Entity entity, Game.Objects.Transform transform, Entity owner)
-        {
-            EntityManager.SetComponentData(entity, transform);
-            EntityManager.SetComponentData(entity, new Owner(owner));
-            if (!EntityManager.HasComponent<Updated>(entity))
-            {
-                EntityManager.AddComponent<Updated>(entity);
-            }
-        }
-
-        private void DeleteSignal(Entity signal, Entity bottomHead)
-        {
-            EntityManager.AddComponent<Deleted>(signal);
-            if (bottomHead != Entity.Null && EntityManager.Exists(bottomHead))
-            {
-                EntityManager.AddComponent<Deleted>(bottomHead);
-            }
-        }
-
-        private void CreateHeads(EntityArchetype archetype, Entity prefab, NativeList<int> siteIndices, bool bottomHead)
-        {
+            EntityArchetype archetype = archetypes[(int)asset];
             if (siteIndices.Length == 0 || !archetype.Valid)
             {
                 return;
             }
+            Entity prefab = prefabs[(int)asset];
             var created = new NativeArray<Entity>(siteIndices.Length, Allocator.Temp);
             EntityManager.CreateEntity(archetype, created);
+
             for (int i = 0; i < created.Length; i++)
             {
                 int siteIndex = siteIndices[i];
                 SignalSiteData site = m_Network.m_Sites[siteIndex];
                 Entity entity = created[i];
-                EntityManager.AddComponent<Secondary>(entity);
-                EntityManager.AddComponent<Owner>(entity);
-                EntityManager.SetComponentData(entity, new Owner(site.m_Owner));
-                EntityManager.SetComponentData(entity, new PrefabRef(prefab));
-                EntityManager.SetComponentData(entity, HeadTransform(site, bottomHead));
-                if (EntityManager.HasComponent<PseudoRandomSeed>(entity))
-                {
-                    EntityManager.SetComponentData(entity, new PseudoRandomSeed(ref m_Random));
-                }
-                EntityManager.AddComponent<Created>(entity);
-                EntityManager.AddComponent<Updated>(entity);
+                float3 position = site.m_Position;
+                position.y += GetPartHeight(site, asset);
+                Initialize(entity, prefab, site.m_Owner, position, site.m_Rotation);
 
-                if (bottomHead)
+                if (asset == SignalAsset.Mast)
+                {
+                    // A mast built as a stack grows its shaft to reach whatever head height is set,
+                    // so one asset serves any height rather than fixing it in the model.
+                    SetStackRange(entity, 0f, Mod.setting.signalHeadHeight);
+                    site.m_Mast = entity;
+                }
+                else if (asset == SignalAsset.BottomHead)
                 {
                     site.m_BottomHead = entity;
                 }
@@ -382,10 +303,64 @@ namespace RailwaySignals.Systems
             created.Dispose();
         }
 
-        /// <summary>
-        /// Stamps the plan onto the top heads once both heads exist, so each one knows the boundary
-        /// it governs and where its medium speed head is.
-        /// </summary>
+        /// <summary>Height above the base of the signal at which a part sits.</summary>
+        private static float GetPartHeight(SignalSiteData site, SignalAsset asset)
+        {
+            if (asset == SignalAsset.Mast)
+            {
+                return 0f;
+            }
+            float head = site.m_Gantry >= 0 ? Mod.setting.gantryHeadHeight : Mod.setting.signalHeadHeight;
+            return asset == SignalAsset.BottomHead ? head - Mod.setting.headSpacing : head;
+        }
+
+        private void PlaceGantries(EntityArchetype archetype, Entity prefab)
+        {
+            if (m_Network.m_Gantries.Length == 0 || !archetype.Valid)
+            {
+                return;
+            }
+            var created = new NativeArray<Entity>(m_Network.m_Gantries.Length, Allocator.Temp);
+            EntityManager.CreateEntity(archetype, created);
+            for (int i = 0; i < created.Length; i++)
+            {
+                GantryData gantry = m_Network.m_Gantries[i];
+                Entity entity = created[i];
+                Initialize(entity, prefab, gantry.m_Owner, gantry.m_Position, gantry.m_Rotation);
+                // The beam mesh tiles between the leg meshes to fill this range along the local X
+                // axis, which is how one structure covers any number of tracks.
+                SetStackRange(entity, -gantry.m_Span, gantry.m_Span);
+                gantry.m_Entity = entity;
+                m_Network.m_Gantries[i] = gantry;
+            }
+            created.Dispose();
+        }
+
+        private void Initialize(Entity entity, Entity prefab, Entity owner, float3 position, quaternion rotation)
+        {
+            EntityManager.AddComponent<Secondary>(entity);
+            EntityManager.AddComponent<Owner>(entity);
+            EntityManager.SetComponentData(entity, new Owner(owner));
+            EntityManager.SetComponentData(entity, new PrefabRef(prefab));
+            EntityManager.SetComponentData(entity, new Game.Objects.Transform(position, rotation));
+            if (EntityManager.HasComponent<PseudoRandomSeed>(entity))
+            {
+                EntityManager.SetComponentData(entity, new PseudoRandomSeed(ref m_Random));
+            }
+            EntityManager.AddComponentData(entity, default(RailwaySignalPart));
+            EntityManager.AddComponent<Created>(entity);
+            EntityManager.AddComponent<Updated>(entity);
+        }
+
+        private void SetStackRange(Entity entity, float min, float max)
+        {
+            if (EntityManager.HasComponent<Game.Objects.Stack>(entity))
+            {
+                EntityManager.SetComponentData(entity, new Game.Objects.Stack { m_Range = new Bounds1(min, max) });
+            }
+        }
+
+        /// <summary>Stamps the plan onto the normal speed heads, which are what the aspect pass drives.</summary>
         private void WriteSignalComponents()
         {
             for (int i = 0; i < m_Network.m_Sites.Length; i++)
@@ -395,23 +370,14 @@ namespace RailwaySignals.Systems
                 {
                     continue;
                 }
-                var signal = new RailwaySignal
+                EntityManager.AddComponentData(site.m_Signal, new RailwaySignal
                 {
                     m_Lane = site.m_Approach.m_Lane,
                     m_Forward = site.m_Approach.m_Forward,
                     m_Class = site.m_Class,
                     m_Speed = site.m_Speed,
-                    m_Aspect = SignalAspect.Stop,
-                    m_BottomHead = site.m_BottomHead
-                };
-                if (EntityManager.HasComponent<RailwaySignal>(site.m_Signal))
-                {
-                    EntityManager.SetComponentData(site.m_Signal, signal);
-                }
-                else
-                {
-                    EntityManager.AddComponentData(site.m_Signal, signal);
-                }
+                    m_Aspect = SignalAspect.Stop
+                });
             }
         }
     }

@@ -21,9 +21,11 @@ namespace RailwaySignals.Systems
 
         private EntityQuery m_CandidateQuery;
 
-        private readonly Entity[] m_Prefabs = new Entity[3];
+        private EntityQuery m_GantryQuery;
 
-        private readonly string[] m_ResolvedFor = new string[3];
+        private readonly Entity[] m_Prefabs = new Entity[5];
+
+        private readonly string[] m_ResolvedFor = new string[5];
 
         protected override void OnCreate()
         {
@@ -32,6 +34,13 @@ namespace RailwaySignals.Systems
             m_CandidateQuery = GetEntityQuery(new EntityQueryDesc
             {
                 All = new[] { ComponentType.ReadOnly<ObjectData>(), ComponentType.ReadOnly<TrafficLightData>(), ComponentType.ReadOnly<ObjectGeometryData>() },
+                None = new[] { ComponentType.ReadOnly<Deleted>() }
+            });
+            // A signal bridge is picked out by StackData instead, which a prefab gets when one of
+            // its meshes carries StackProperties. That is what lets the beam tile across the span.
+            m_GantryQuery = GetEntityQuery(new EntityQueryDesc
+            {
+                All = new[] { ComponentType.ReadOnly<ObjectData>(), ComponentType.ReadOnly<StackData>(), ComponentType.ReadOnly<ObjectGeometryData>() },
                 None = new[] { ComponentType.ReadOnly<Deleted>() }
             });
         }
@@ -47,14 +56,20 @@ namespace RailwaySignals.Systems
             string preferredName;
             switch (asset)
             {
-                case SignalAsset.Automatic:
-                    preferredName = Mod.setting.automaticSignalPrefabName;
+                case SignalAsset.Mast:
+                    preferredName = Mod.setting.mastPrefabName;
+                    break;
+                case SignalAsset.AutomaticHead:
+                    preferredName = Mod.setting.automaticHeadPrefabName;
                     break;
                 case SignalAsset.BottomHead:
                     preferredName = Mod.setting.bottomHeadPrefabName;
                     break;
+                case SignalAsset.Gantry:
+                    preferredName = Mod.setting.gantryPrefabName;
+                    break;
                 default:
-                    preferredName = Mod.setting.homeSignalPrefabName;
+                    preferredName = Mod.setting.homeHeadPrefabName;
                     break;
             }
             if (m_Prefabs[index] != Entity.Null && m_ResolvedFor[index] == preferredName && EntityManager.Exists(m_Prefabs[index]))
@@ -62,7 +77,12 @@ namespace RailwaySignals.Systems
                 return m_Prefabs[index];
             }
             m_ResolvedFor[index] = preferredName;
-            m_Prefabs[index] = Resolve(preferredName);
+            // A mast and a bridge have no vanilla equivalent worth standing in for, so they are
+            // matched by name only and simply go unbuilt until an asset exists. A stand-in head is
+            // a road traffic light, which brings its own pole and so needs no mast anyway.
+            m_Prefabs[index] = asset == SignalAsset.Gantry
+                ? Resolve(m_GantryQuery, preferredName, exactOnly: true)
+                : Resolve(m_CandidateQuery, preferredName, exactOnly: asset == SignalAsset.Mast);
             return m_Prefabs[index];
         }
 
@@ -74,9 +94,14 @@ namespace RailwaySignals.Systems
             }
         }
 
-        private Entity Resolve(string preferredName)
+        /// <summary>
+        /// Finds the named prefab, or the best stand-in when a name is not given. A signal bridge
+        /// has no vanilla equivalent to stand in for, so it is matched by name only and simply goes
+        /// unbuilt until an asset exists.
+        /// </summary>
+        private Entity Resolve(EntityQuery query, string preferredName, bool exactOnly)
         {
-            NativeArray<Entity> candidates = m_CandidateQuery.ToEntityArray(Allocator.Temp);
+            NativeArray<Entity> candidates = query.ToEntityArray(Allocator.Temp);
             Entity exact = Entity.Null;
             Entity fallback = Entity.Null;
             int fallbackScore = int.MinValue;
@@ -103,16 +128,23 @@ namespace RailwaySignals.Systems
             }
             candidates.Dispose();
 
-            Entity result = exact != Entity.Null ? exact : fallback;
-            if (result == Entity.Null)
+            if (exact != Entity.Null)
+            {
+                return exact;
+            }
+            if (exactOnly)
+            {
+                return Entity.Null;
+            }
+            if (fallback == Entity.Null)
             {
                 Mod.log.Warn("No object prefab with a TrafficLightObject component is available; signals cannot be placed.");
             }
-            else if (exact == Entity.Null && !string.IsNullOrEmpty(preferredName))
+            else if (!string.IsNullOrEmpty(preferredName))
             {
-                Mod.log.Info($"Signal prefab '{preferredName}' not found, standing in with '{m_PrefabSystem.GetPrefab<PrefabBase>(result).name}'.");
+                Mod.log.Info($"Signal prefab '{preferredName}' not found, standing in with '{m_PrefabSystem.GetPrefab<PrefabBase>(fallback).name}'.");
             }
-            return result;
+            return fallback;
         }
 
         /// <summary>Prefers a plain vehicle light over pedestrian heads and level crossing gear.</summary>

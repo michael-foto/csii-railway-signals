@@ -23,6 +23,7 @@ namespace RailwaySignals
                 { m_Setting.GetOptionGroupLocaleID(Setting.kBlockGroup), "Blocks" },
                 { m_Setting.GetOptionGroupLocaleID(Setting.kSpeedGroup), "Medium speed" },
                 { m_Setting.GetOptionGroupLocaleID(Setting.kPlacementGroup), "Signal posts" },
+                { m_Setting.GetOptionGroupLocaleID(Setting.kGantryGroup), "Signal bridges" },
 
                 { m_Setting.GetOptionLabelLocaleID(nameof(Setting.enableSignals)), "Place signals" },
                 { m_Setting.GetOptionDescLocaleID(nameof(Setting.enableSignals)), "Automatically signal the rail network. Turning this off removes every signal post." },
@@ -48,8 +49,11 @@ namespace RailwaySignals
                 { m_Setting.GetOptionLabelLocaleID(nameof(Setting.mediumSpeedBlockLength)), "Medium speed block length" },
                 { m_Setting.GetOptionDescLocaleID(nameof(Setting.mediumSpeedBlockLength)), "Blocks shorter than this are taken as cramped geometry, which is what a junction throat looks like, and are signalled at medium speed." },
 
-                { m_Setting.GetOptionLabelLocaleID(nameof(Setting.bottomHeadDrop)), "Medium speed head drop" },
-                { m_Setting.GetOptionDescLocaleID(nameof(Setting.bottomHeadDrop)), "How far below the top head the medium speed head is placed. Leave at zero when the head asset positions its own lamps on the mast; raise it to tell two stand-in assets apart." },
+                { m_Setting.GetOptionLabelLocaleID(nameof(Setting.signalHeadHeight)), "Head height above rail" },
+                { m_Setting.GetOptionDescLocaleID(nameof(Setting.signalHeadHeight)), "How high the normal speed head sits on a lineside post. A mast built as a stack grows its shaft to reach this, so one mast asset serves any height." },
+
+                { m_Setting.GetOptionLabelLocaleID(nameof(Setting.headSpacing)), "Gap between heads" },
+                { m_Setting.GetOptionDescLocaleID(nameof(Setting.headSpacing)), "How far below the normal speed head the medium speed head hangs." },
 
                 { m_Setting.GetOptionLabelLocaleID(nameof(Setting.bottomHeadPrefabName)), "Medium speed head asset" },
                 { m_Setting.GetOptionDescLocaleID(nameof(Setting.bottomHeadPrefabName)), "Name of the object asset for the lower head, which carries the medium speed indications. It is placed at the same position as the top head, so its lamps should sit at the right height on the mast in the asset itself. Leave empty to pick one automatically." },
@@ -60,11 +64,32 @@ namespace RailwaySignals
                 { m_Setting.GetOptionLabelLocaleID(nameof(Setting.signalOffset)), "Offset from track centre" },
                 { m_Setting.GetOptionDescLocaleID(nameof(Setting.signalOffset)), "How far to the side of the track the post stands. Signals are placed on the driver's side, following the city's left or right hand running." },
 
-                { m_Setting.GetOptionLabelLocaleID(nameof(Setting.homeSignalPrefabName)), "Home signal asset" },
-                { m_Setting.GetOptionDescLocaleID(nameof(Setting.homeSignalPrefabName)), "Name of the object asset used where the block ahead holds pointwork, a crossing or a platform. Leave empty to pick one automatically." },
+                { m_Setting.GetOptionLabelLocaleID(nameof(Setting.mastPrefabName)), "Mast asset" },
+                { m_Setting.GetOptionDescLocaleID(nameof(Setting.mastPrefabName)), "Name of the object asset for the post a lineside signal stands on. Heads are modelled without a mast so the same ones can hang from a bridge, so this carries the post on its own. There is no vanilla stand-in; without one the heads are placed unsupported." },
 
-                { m_Setting.GetOptionLabelLocaleID(nameof(Setting.automaticSignalPrefabName)), "Automatic signal asset" },
-                { m_Setting.GetOptionDescLocaleID(nameof(Setting.automaticSignalPrefabName)), "Name of the object asset used where the block ahead is plain line. These carry an \"A\" plate on the prototype. Leave empty to pick one automatically." },
+                { m_Setting.GetOptionLabelLocaleID(nameof(Setting.homeHeadPrefabName)), "Home signal head asset" },
+                { m_Setting.GetOptionDescLocaleID(nameof(Setting.homeHeadPrefabName)), "Name of the head asset used where the block ahead holds pointwork, a crossing or a platform. Leave empty to pick one automatically." },
+
+                { m_Setting.GetOptionLabelLocaleID(nameof(Setting.automaticHeadPrefabName)), "Automatic signal head asset" },
+                { m_Setting.GetOptionDescLocaleID(nameof(Setting.automaticHeadPrefabName)), "Name of the head asset used where the block ahead is plain line. These carry an \"A\" plate on the prototype. Leave empty to pick one automatically." },
+
+                { m_Setting.GetOptionLabelLocaleID(nameof(Setting.minGantryTracks)), "Tracks needed for a bridge" },
+                { m_Setting.GetOptionDescLocaleID(nameof(Setting.minGantryTracks)), "How many parallel tracks have to carry signals abreast of each other before they are put on a signal bridge instead of their own lineside posts. Set to zero to always use lineside posts." },
+
+                { m_Setting.GetOptionLabelLocaleID(nameof(Setting.maxGantryTrackSpacing)), "Widest track spacing" },
+                { m_Setting.GetOptionDescLocaleID(nameof(Setting.maxGantryTrackSpacing)), "How far apart neighbouring tracks can be and still count as one group. The group grows one track at a time, so a wide formation is gathered as long as each step is within this." },
+
+                { m_Setting.GetOptionLabelLocaleID(nameof(Setting.gantryAlignTolerance)), "Alignment tolerance" },
+                { m_Setting.GetOptionDescLocaleID(nameof(Setting.gantryAlignTolerance)), "How far apart along the track two signals can sit and still share a bridge. Signals that do share one are squared up onto its line." },
+
+                { m_Setting.GetOptionLabelLocaleID(nameof(Setting.gantryMargin)), "Structure overhang" },
+                { m_Setting.GetOptionDescLocaleID(nameof(Setting.gantryMargin)), "How far the bridge extends beyond the outermost track it spans." },
+
+                { m_Setting.GetOptionLabelLocaleID(nameof(Setting.gantryHeadHeight)), "Head height above rail" },
+                { m_Setting.GetOptionDescLocaleID(nameof(Setting.gantryHeadHeight)), "How high the heads hang when carried on a bridge. Match this to where the beam sits in your bridge asset." },
+
+                { m_Setting.GetOptionLabelLocaleID(nameof(Setting.gantryPrefabName)), "Signal bridge asset" },
+                { m_Setting.GetOptionDescLocaleID(nameof(Setting.gantryPrefabName)), "Name of the object asset for the bridge. It has to be built as a stack, with a leg mesh, a beam mesh and a second leg mesh, so the beam can tile out to whatever width the tracks need. There is no vanilla stand-in, so until one is installed the grouped signals stay on lineside posts." },
 
                 { m_Setting.GetOptionLabelLocaleID(nameof(Setting.rebuildSignals)), "Rebuild signals" },
                 { m_Setting.GetOptionDescLocaleID(nameof(Setting.rebuildSignals)), "Recompute every signal position and block from the current track network." }
