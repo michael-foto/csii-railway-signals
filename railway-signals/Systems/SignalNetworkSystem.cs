@@ -236,8 +236,8 @@ namespace RailwaySignals.Systems
         /// </summary>
         private void PlaceSignalObjects()
         {
-            var prefabs = new Entity[4];
-            var archetypes = new EntityArchetype[4];
+            var prefabs = new Entity[SignalPrefabSystem.kAssetCount];
+            var archetypes = new EntityArchetype[SignalPrefabSystem.kAssetCount];
             for (int i = 0; i < prefabs.Length; i++)
             {
                 prefabs[i] = m_SignalPrefabSystem.GetSignalPrefab((SignalAsset)i);

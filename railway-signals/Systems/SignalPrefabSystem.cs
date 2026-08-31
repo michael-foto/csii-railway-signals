@@ -16,7 +16,7 @@ namespace RailwaySignals.Systems
     /// </summary>
     public partial class SignalPrefabSystem : GameSystemBase
     {
-        private static readonly int kAssetCount = Enum.GetValues(typeof(SignalAsset)).Length;
+        public static readonly int kAssetCount = Enum.GetValues(typeof(SignalAsset)).Length;
 
         private EntityQuery m_Query;
 
