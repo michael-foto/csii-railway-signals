@@ -232,9 +232,7 @@ namespace RailwaySignals.Systems
 
         /// <summary>
         /// Brings the objects in the world into line with the plan. Anything already standing in the
-        /// right place with the right asset is left completely alone: re-creating an object makes it
-        /// forfeit its culling index and mesh batches, and doing that to the whole network every
-        /// time the track is touched is what leaves parts of it unrendered.
+        /// right place with the right asset is left completely alone.
         /// </summary>
         private void PlaceSignalObjects()
         {
@@ -273,22 +271,19 @@ namespace RailwaySignals.Systems
                 SignalSiteData site = m_Network.m_Sites[i];
                 SignalAsset bottomAsset = site.m_Class == SignalClass.Automatic ? SignalAsset.AutomaticHead : SignalAsset.HomeHead;
 
-                site.m_Signal = Reconcile(site.m_Approach, SignalPartKind.TopHead, SignalAsset.HomeHead,
-                    HeadPosition(site, SignalPartKind.TopHead), site.m_Rotation, prefabs, archetypes, ref standing, ref kept, ref made);
-                site.m_BottomHead = Reconcile(site.m_Approach, SignalPartKind.BottomHead, bottomAsset,
-                    HeadPosition(site, SignalPartKind.BottomHead), site.m_Rotation, prefabs, archetypes, ref standing, ref kept, ref made);
-                site.m_Mast = site.m_Gantry >= 0
-                    ? Entity.Null
-                    : Reconcile(site.m_Approach, SignalPartKind.Mast, SignalAsset.Mast,
-                        site.m_Position, site.m_Rotation, prefabs, archetypes, ref standing, ref kept, ref made);
+                site.m_Signal = Reconcile(site.m_Approach, SignalPartKind.TopHead, SignalAsset.HomeHead, site, prefabs, archetypes, ref standing, ref kept, ref made);
+                site.m_BottomHead = Reconcile(site.m_Approach, SignalPartKind.BottomHead, bottomAsset, site, prefabs, archetypes, ref standing, ref kept, ref made);
+                site.m_Mast = Reconcile(site.m_Approach, SignalPartKind.Mast, site.m_Gantry >= 0 ? SignalAsset.GantryCage : SignalAsset.Mast,
+                    site, prefabs, archetypes, ref standing, ref kept, ref made);
                 m_Network.m_Sites[i] = site;
             }
 
+            // Place Gantries
             for (int i = 0; i < m_Network.m_Gantries.Length; i++)
             {
                 GantryData gantry = m_Network.m_Gantries[i];
                 gantry.m_Entity = Reconcile(gantry.m_Key, SignalPartKind.Gantry, SignalAsset.Gantry,
-                    gantry.m_Position, gantry.m_Rotation, prefabs, archetypes, ref standing, ref kept, ref made);
+                    gantry, prefabs, archetypes, ref standing, ref kept, ref made);
                 if (gantry.m_Entity != Entity.Null)
                 {
                     SetStackRange(gantry.m_Entity, prefabs[(int)SignalAsset.Gantry], -gantry.m_Span, gantry.m_Span);
@@ -312,8 +307,7 @@ namespace RailwaySignals.Systems
         /// Returns the object for one part, reusing what is already there when the asset matches and
         /// only moving it if it has actually shifted.
         /// </summary>
-        private Entity Reconcile(DirectedLane approach, SignalPartKind kind, SignalAsset asset, float3 position,
-            quaternion rotation, Entity[] prefabs, EntityArchetype[] archetypes, ref NativeParallelHashMap<PartKey, Entity> standing,
+        private Entity Reconcile(DirectedLane approach, SignalPartKind kind, SignalAsset asset, IPositionable site, Entity[] prefabs, EntityArchetype[] archetypes, ref NativeParallelHashMap<PartKey, Entity> standing,
             ref int kept, ref int made)
         {
             Entity prefab = prefabs[(int)asset];
@@ -322,13 +316,16 @@ namespace RailwaySignals.Systems
                 return Entity.Null;
             }
             var key = new PartKey { m_Approach = approach, m_Kind = kind };
-            var transform = new Game.Objects.Transform(position, rotation);
+            // we only need to reposition signal sub-elements. Gantries go by unchanged.
+            var transform = site is SignalSiteData data
+                ? GetTransformedPosition(data, kind)
+                : new Transform(site.Position, site.Rotation);
 
             if (standing.TryGetValue(key, out Entity entity)
                 && EntityManager.GetComponentData<PrefabRef>(entity).m_Prefab == prefab)
             {
                 standing.Remove(key);
-                if (!EntityManager.GetComponentData<Game.Objects.Transform>(entity).Equals(transform))
+                if (!EntityManager.GetComponentData<Transform>(entity).Equals(transform))
                 {
                     EntityManager.SetComponentData(entity, transform);
                     if (!EntityManager.HasComponent<Updated>(entity))
@@ -365,12 +362,24 @@ namespace RailwaySignals.Systems
         }
 
         /// <summary>Where a head sits, given the assembly is taller on a bridge than on a post.</summary>
-        private static float3 HeadPosition(SignalSiteData site, SignalPartKind kind)
+        private static Transform GetTransformedPosition(SignalSiteData site, SignalPartKind kind)
         {
             float3 position = site.m_Position;
-            float head = site.m_Gantry >= 0 ? Mod.setting.gantryHeadHeight : Mod.setting.signalHeadHeight;
-            position.y += kind == SignalPartKind.BottomHead ? head - Mod.setting.headSpacing : head;
-            return position;
+            if (kind is SignalPartKind.TopHead or SignalPartKind.BottomHead)
+            {
+                // If this is on a gantry, move it up a little and forward to clear the cage
+                float head = site.m_Gantry >= 0 ? Mod.setting.gantryHeadHeight : 0;
+                position.x += site.m_Gantry >= 0 ? Mod.setting.gantryHeadOffset : 0;
+                // If this is a bottom head, move it down 1.1m (spacing distance)
+                position.y += kind == SignalPartKind.BottomHead ? head - 1.1f : head;
+            }
+            else if (kind is SignalPartKind.Mast)
+            {
+                // If this is on a gantry, move it forward to clear the lattice
+                position.x += site.m_Gantry >= 0 ? Mod.setting.gantryCageOffset : 0;
+            }
+
+            return new Transform(position, site.m_Rotation);
         }
 
         /// <summary>

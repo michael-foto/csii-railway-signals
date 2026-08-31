@@ -50,7 +50,6 @@ namespace RailwaySignals.Signalling
         TopHead,
         BottomHead,
         Gantry,
-        GantryCage
     }
 
     /// <summary>

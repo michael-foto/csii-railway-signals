@@ -70,8 +70,14 @@ namespace RailwaySignals
                 { m_Setting.GetOptionLabelLocaleID(nameof(Setting.gantryMargin)), "Structure overhang" },
                 { m_Setting.GetOptionDescLocaleID(nameof(Setting.gantryMargin)), "How far the bridge extends beyond the outermost track it spans." },
 
+                { m_Setting.GetOptionLabelLocaleID(nameof(Setting.gantryCageOffset)), "Gantry Cage Offset" },
+                { m_Setting.GetOptionDescLocaleID(nameof(Setting.gantryCageOffset)), "How far the gantry cage sits in front of the gantry (TEMP)" },
+
                 { m_Setting.GetOptionLabelLocaleID(nameof(Setting.gantryHeadHeight)), "Head height above rail" },
                 { m_Setting.GetOptionDescLocaleID(nameof(Setting.gantryHeadHeight)), "How high the heads hang when carried on a bridge. Match this to where the beam sits in your bridge asset." },
+
+                { m_Setting.GetOptionLabelLocaleID(nameof(Setting.gantryHeadOffset)), "Head offset" },
+                { m_Setting.GetOptionDescLocaleID(nameof(Setting.gantryHeadOffset)), "How far the head sits in front of the gantry's centre point (TEMP)" },
 
                 { m_Setting.GetOptionLabelLocaleID(nameof(Setting.rebuildSignals)), "Rebuild signals" },
                 { m_Setting.GetOptionDescLocaleID(nameof(Setting.rebuildSignals)), "Recompute every signal position and block from the current track network." }

@@ -94,9 +94,17 @@ namespace RailwaySignals
         [SettingsUISection(kSection, kGantryGroup)]
         public float gantryMargin { get; set; }
 
-        [SettingsUISlider(min = 3f, max = 12f, step = 0.25f, unit = Unit.kLength, scalarMultiplier = 1f)]
+        [SettingsUISlider(min = -2f, max = 5f, step = 0.25f, unit = Unit.kLength, scalarMultiplier = 1f)]
         [SettingsUISection(kSection, kGantryGroup)]
         public float gantryHeadHeight { get; set; }
+
+        [SettingsUISlider(min = -2f, max = 5f, step = 0.25f, unit = Unit.kLength, scalarMultiplier = 1f)]
+        [SettingsUISection(kSection, kGantryGroup)]
+        public float gantryHeadOffset { get; set; }
+
+        [SettingsUISlider(min = -2f, max = 5f, step = 0.25f, unit = Unit.kLength, scalarMultiplier = 1f)]
+        [SettingsUISection(kSection, kGantryGroup)]
+        public float gantryCageOffset { get; set; }
 
         [SettingsUIButton]
         [SettingsUISection(kSection, kPlacementGroup)]

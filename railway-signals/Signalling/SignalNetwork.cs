@@ -1,4 +1,5 @@
 using System;
+using System.Security.Policy;
 using Colossal.Mathematics;
 using Game.Common;
 using Game.Net;
@@ -9,7 +10,7 @@ using Unity.Mathematics;
 namespace RailwaySignals.Signalling
 {
     /// <summary>One signal position and the state it is displaying.</summary>
-    public struct SignalSiteData
+    public struct SignalSiteData : IPositionable
     {
         /// <summary>The signal governs the boundary at this lane's exit end.</summary>
         public DirectedLane m_Approach;
@@ -18,7 +19,7 @@ namespace RailwaySignals.Signalling
 
         public SignalSpeed m_Speed;
 
-        /// <summary>The post, on a lineside signal. Null on one carried by a bridge.</summary>
+        /// <summary>On a lineside signal, this carries the post frame. On a gantry, this holds the signal gantry cage.</summary>
         public Entity m_Mast;
 
         /// <summary>Placed object entity for the top head, or Null while the site has no object yet.</summary>
@@ -44,13 +45,16 @@ namespace RailwaySignals.Signalling
 
         /// <summary>Set during the aspect pass when something stands in or is claiming the block.</summary>
         public bool m_Blocked;
-    }
 
+        public float3 Position => m_Position;
+
+        public quaternion Rotation => m_Rotation;
+    }
     /// <summary>
     /// A signal bridge carrying the heads for a group of parallel tracks. One object entity spans
     /// the group: the game tiles the beam mesh between the leg meshes to fill <see cref="m_Span"/>.
     /// </summary>
-    public struct GantryData
+    public struct GantryData : IPositionable
     {
         public float3 m_Position;
 
@@ -63,6 +67,16 @@ namespace RailwaySignals.Signalling
         public float m_Span;
 
         public Entity m_Entity;
+
+        public float3 Position => m_Position;
+
+        public quaternion Rotation => m_Rotation;
+    }
+
+    public interface IPositionable
+    {
+        public float3 Position { get; }
+        public quaternion Rotation { get; }
     }
 
     /// <summary>
