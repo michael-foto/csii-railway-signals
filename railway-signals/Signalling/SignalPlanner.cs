@@ -318,7 +318,6 @@ namespace RailwaySignals.Signalling
             network.m_Sites.Add(new SignalSiteData
             {
                 m_Approach = approach,
-                m_Owner = m_Graph.m_OwnerData.TryGetComponent(approach.m_Lane, out var owner) ? owner.m_Owner : Entity.Null,
                 m_Signal = Entity.Null,
                 m_Position = position,
                 m_Rotation = rotation,
@@ -436,20 +435,6 @@ namespace RailwaySignals.Signalling
                 network.m_Sites[i] = site;
             }
 
-            // A second head only earns its place where a medium indication can actually appear:
-            // on a medium speed signal, or on a normal one that has to warn of a medium one ahead.
-            for (int i = 0; i < network.m_Sites.Length; i++)
-            {
-                SignalSiteData site = network.m_Sites[i];
-                bool twoHead = site.m_Speed == SignalSpeed.Medium;
-                int2 successors = network.m_SuccessorRanges[i];
-                for (int j = successors.x; j < successors.x + successors.y && !twoHead; j++)
-                {
-                    twoHead = network.m_Sites[network.m_Successors[j]].m_Speed == SignalSpeed.Medium;
-                }
-                site.m_TwoHead = twoHead;
-                network.m_Sites[i] = site;
-            }
         }
 
         private bool IsPlatform(Entity lane)
@@ -582,10 +567,10 @@ namespace RailwaySignals.Signalling
 
             network.m_Gantries.Add(new GantryData
             {
+                m_Key = network.m_Sites[group[0]].m_Approach,
                 m_Position = position,
                 m_Rotation = quaternion.LookRotationSafe(-direction, math.up()),
                 m_Span = (acrossMax - acrossMin) * 0.5f + m_GantryMargin,
-                m_Owner = m_Graph.m_OwnerData.TryGetComponent(network.m_Sites[group[0]].m_Approach.m_Lane, out var owner) ? owner.m_Owner : Entity.Null,
                 m_Entity = Entity.Null
             });
 

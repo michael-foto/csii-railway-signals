@@ -26,28 +26,59 @@ namespace RailwaySignals.Signalling
 
     /// <summary>
     /// The separate objects a signal is assembled from. Heads are modelled without a mast so the
-    /// same ones serve on a lineside post and hung from a bridge.
+    /// same ones serve on a lineside post and hung from a bridge. Every signal has two heads: the
+    /// upper one is always a plain lamp, and the lower one carries the "A" plate on an automatic.
     /// </summary>
     public enum SignalAsset : byte
     {
         /// <summary>The post a lineside signal stands on. Not used on a bridge.</summary>
         Mast,
-        /// <summary>Normal speed head of an interlocked signal.</summary>
+        /// <summary>Plain lamp head, with no "A" plate.</summary>
         HomeHead,
-        /// <summary>Normal speed head of an automatic, which carries an "A" plate.</summary>
+        /// <summary>Lamp head carrying an "A" plate, used as the lower head of an automatic.</summary>
         AutomaticHead,
-        /// <summary>Medium speed head, hung below the normal speed one.</summary>
-        BottomHead,
         /// <summary>The bridge spanning a group of parallel tracks.</summary>
         Gantry
     }
 
-    /// <summary>
-    /// Marks every object this mod puts up, whatever part of a signal it is, so a rebuild can clear
-    /// the previous one out. The plan owns which entity is which; this is only for their lifetime.
-    /// </summary>
-    public struct RailwaySignalPart : IComponentData, IQueryTypeParameter, IEmptySerializable
+    /// <summary>Which piece of the assembly an object is.</summary>
+    public enum SignalPartKind : byte
     {
+        Mast,
+        TopHead,
+        BottomHead,
+        Gantry
+    }
+
+    /// <summary>
+    /// Identifies every object this mod puts up. A rebuild matches these against the new plan so
+    /// that a signal which has not moved keeps its entity, rather than being destroyed and made
+    /// again: re-creating an object costs it its culling index and mesh batches, and doing that to
+    /// the whole network on every track edit leaves objects unrendered.
+    /// </summary>
+    public struct RailwaySignalPart : IComponentData, IQueryTypeParameter, ISerializable
+    {
+        /// <summary>Approach lane of the signal this belongs to, or of a bridge's first member.</summary>
+        public Entity m_Lane;
+
+        public bool m_Forward;
+
+        public SignalPartKind m_Kind;
+
+        public void Serialize<TWriter>(TWriter writer) where TWriter : IWriter
+        {
+            writer.Write(m_Lane);
+            writer.Write(m_Forward);
+            writer.Write((byte)m_Kind);
+        }
+
+        public void Deserialize<TReader>(TReader reader) where TReader : IReader
+        {
+            reader.Read(out m_Lane);
+            reader.Read(out m_Forward);
+            reader.Read(out byte kind);
+            m_Kind = (SignalPartKind)kind;
+        }
     }
 
     /// <summary>One lamp of a signal head.</summary>

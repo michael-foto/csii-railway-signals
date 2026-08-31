@@ -85,20 +85,15 @@ namespace RailwaySignals
         [SettingsUISection(kSection, kPlacementGroup)]
         public string mastPrefabName { get; set; }
 
-        /// <summary>Asset for the head of a home signal, which is interlocked. Empty picks one automatically.</summary>
+        /// <summary>Plain lamp head, used for every upper head and for the lower head of a home signal.</summary>
         [SettingsUITextInput]
         [SettingsUISection(kSection, kPlacementGroup)]
         public string homeHeadPrefabName { get; set; }
 
-        /// <summary>Asset for the head of an automatic, which carries an "A" plate. Empty picks one automatically.</summary>
+        /// <summary>Lamp head with an "A" plate, used as the lower head of an automatic signal.</summary>
         [SettingsUITextInput]
         [SettingsUISection(kSection, kPlacementGroup)]
         public string automaticHeadPrefabName { get; set; }
-
-        /// <summary>Asset for the medium speed head hung below the top one. Empty picks one automatically.</summary>
-        [SettingsUITextInput]
-        [SettingsUISection(kSection, kPlacementGroup)]
-        public string bottomHeadPrefabName { get; set; }
 
         /// <summary>Fewest parallel tracks that get a signal bridge instead of lineside posts. Zero disables them.</summary>
         [SettingsUISlider(min = 0, max = 8, step = 1, unit = Unit.kInteger)]
@@ -160,7 +155,7 @@ namespace RailwaySignals
             signalSubwayTracks = false;
             signalTramTracks = false;
             intermediateBlockSpacing = 400;
-            intermediateOnBidirectionalTrack = false;
+            intermediateOnBidirectionalTrack = true;
             signalSetback = 6f;
             signalOffset = 3.5f;
             signalHeadHeight = 4f;
@@ -171,7 +166,6 @@ namespace RailwaySignals
             mastPrefabName = string.Empty;
             homeHeadPrefabName = string.Empty;
             automaticHeadPrefabName = string.Empty;
-            bottomHeadPrefabName = string.Empty;
             minGantryTracks = 3;
             maxGantryTrackSpacing = 12f;
             gantryAlignTolerance = 15f;

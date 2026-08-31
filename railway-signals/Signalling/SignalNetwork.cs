@@ -18,9 +18,6 @@ namespace RailwaySignals.Signalling
 
         public SignalSpeed m_Speed;
 
-        /// <summary>Net entity the placed object hangs off, so it dies with the track.</summary>
-        public Entity m_Owner;
-
         /// <summary>The post, on a lineside signal. Null on one carried by a bridge.</summary>
         public Entity m_Mast;
 
@@ -29,9 +26,6 @@ namespace RailwaySignals.Signalling
 
         /// <summary>Placed object entity for the medium speed head, Null on a single headed signal.</summary>
         public Entity m_BottomHead;
-
-        /// <summary>Whether this signal can ever show a medium indication and so needs a second head.</summary>
-        public bool m_TwoHead;
 
         public float3 m_Position;
 
@@ -62,11 +56,11 @@ namespace RailwaySignals.Signalling
 
         public quaternion m_Rotation;
 
+        /// <summary>Approach of the first member, used as a stable identity across rebuilds.</summary>
+        public DirectedLane m_Key;
+
         /// <summary>Half width of the structure, measured out from the position along its own X axis.</summary>
         public float m_Span;
-
-        /// <summary>Net entity the structure hangs off, so it dies with the track.</summary>
-        public Entity m_Owner;
 
         public Entity m_Entity;
     }

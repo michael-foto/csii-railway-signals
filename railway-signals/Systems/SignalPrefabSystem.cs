@@ -23,9 +23,11 @@ namespace RailwaySignals.Systems
 
         private EntityQuery m_GantryQuery;
 
-        private readonly Entity[] m_Prefabs = new Entity[5];
+        private EntityQuery m_MastQuery;
 
-        private readonly string[] m_ResolvedFor = new string[5];
+        private readonly Entity[] m_Prefabs = new Entity[4];
+
+        private readonly string[] m_ResolvedFor = new string[4];
 
         protected override void OnCreate()
         {
@@ -41,6 +43,13 @@ namespace RailwaySignals.Systems
             m_GantryQuery = GetEntityQuery(new EntityQueryDesc
             {
                 All = new[] { ComponentType.ReadOnly<ObjectData>(), ComponentType.ReadOnly<StackData>(), ComponentType.ReadOnly<ObjectGeometryData>() },
+                None = new[] { ComponentType.ReadOnly<Deleted>() }
+            });
+            // A mast has no lamps, so it is any plain object. Requiring TrafficLightData of it, as
+            // the heads do, would rule out every post ever modelled.
+            m_MastQuery = GetEntityQuery(new EntityQueryDesc
+            {
+                All = new[] { ComponentType.ReadOnly<ObjectData>(), ComponentType.ReadOnly<ObjectGeometryData>() },
                 None = new[] { ComponentType.ReadOnly<Deleted>() }
             });
         }
@@ -62,9 +71,6 @@ namespace RailwaySignals.Systems
                 case SignalAsset.AutomaticHead:
                     preferredName = Mod.setting.automaticHeadPrefabName;
                     break;
-                case SignalAsset.BottomHead:
-                    preferredName = Mod.setting.bottomHeadPrefabName;
-                    break;
                 case SignalAsset.Gantry:
                     preferredName = Mod.setting.gantryPrefabName;
                     break;
@@ -80,9 +86,14 @@ namespace RailwaySignals.Systems
             // A mast and a bridge have no vanilla equivalent worth standing in for, so they are
             // matched by name only and simply go unbuilt until an asset exists. A stand-in head is
             // a road traffic light, which brings its own pole and so needs no mast anyway.
-            m_Prefabs[index] = asset == SignalAsset.Gantry
-                ? Resolve(m_GantryQuery, preferredName, exactOnly: true)
-                : Resolve(m_CandidateQuery, preferredName, exactOnly: asset == SignalAsset.Mast);
+            EntityQuery query = asset switch
+            {
+                SignalAsset.Mast => m_MastQuery,
+                SignalAsset.Gantry => m_GantryQuery,
+                _ => m_CandidateQuery
+            };
+            bool nameOnly = asset == SignalAsset.Mast || asset == SignalAsset.Gantry;
+            m_Prefabs[index] = Resolve(query, preferredName, nameOnly, asset);
             return m_Prefabs[index];
         }
 
@@ -99,7 +110,7 @@ namespace RailwaySignals.Systems
         /// has no vanilla equivalent to stand in for, so it is matched by name only and simply goes
         /// unbuilt until an asset exists.
         /// </summary>
-        private Entity Resolve(EntityQuery query, string preferredName, bool exactOnly)
+        private Entity Resolve(EntityQuery query, string preferredName, bool exactOnly, SignalAsset asset)
         {
             NativeArray<Entity> candidates = query.ToEntityArray(Allocator.Temp);
             Entity exact = Entity.Null;
@@ -134,6 +145,10 @@ namespace RailwaySignals.Systems
             }
             if (exactOnly)
             {
+                // Silence here used to hide a missing asset completely, so say so once.
+                Mod.log.Warn(string.IsNullOrEmpty(preferredName)
+                    ? $"No asset is named for {asset}, so none will be placed."
+                    : $"No usable asset called '{preferredName}' was found for {asset}, so none will be placed.");
                 return Entity.Null;
             }
             if (fallback == Entity.Null)

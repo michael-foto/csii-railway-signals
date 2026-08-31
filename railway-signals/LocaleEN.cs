@@ -38,7 +38,7 @@ namespace RailwaySignals
                 { m_Setting.GetOptionDescLocaleID(nameof(Setting.intermediateBlockSpacing)), "How long a stretch of plain line runs before an automatic signal divides it. Junctions and platform ends are always signalled regardless. Set to zero to signal junctions and platforms only." },
 
                 { m_Setting.GetOptionLabelLocaleID(nameof(Setting.intermediateOnBidirectionalTrack)), "Automatic signals on single line" },
-                { m_Setting.GetOptionDescLocaleID(nameof(Setting.intermediateOnBidirectionalTrack)), "Divide bidirectional single track into blocks as well. Off by default, since single lines are normally worked as one section between passing places." },
+                { m_Setting.GetOptionDescLocaleID(nameof(Setting.intermediateOnBidirectionalTrack)), "Divide bidirectional single track into blocks as well. Train track in this game is always bidirectional, so turning this off leaves automatic signals nowhere to go and only junctions and platforms get signalled." },
 
                 { m_Setting.GetOptionLabelLocaleID(nameof(Setting.mediumSpeedCurveRadius)), "Medium speed curve radius" },
                 { m_Setting.GetOptionDescLocaleID(nameof(Setting.mediumSpeedCurveRadius)), "Curves tighter than this radius are treated as medium speed, so the signal admitting a train onto them is a medium speed signal." },
@@ -55,8 +55,6 @@ namespace RailwaySignals
                 { m_Setting.GetOptionLabelLocaleID(nameof(Setting.headSpacing)), "Gap between heads" },
                 { m_Setting.GetOptionDescLocaleID(nameof(Setting.headSpacing)), "How far below the normal speed head the medium speed head hangs." },
 
-                { m_Setting.GetOptionLabelLocaleID(nameof(Setting.bottomHeadPrefabName)), "Medium speed head asset" },
-                { m_Setting.GetOptionDescLocaleID(nameof(Setting.bottomHeadPrefabName)), "Name of the object asset for the lower head, which carries the medium speed indications. It is placed at the same position as the top head, so its lamps should sit at the right height on the mast in the asset itself. Leave empty to pick one automatically." },
 
                 { m_Setting.GetOptionLabelLocaleID(nameof(Setting.signalSetback)), "Set back from boundary" },
                 { m_Setting.GetOptionDescLocaleID(nameof(Setting.signalSetback)), "How far short of the block boundary the post stands." },
@@ -67,11 +65,11 @@ namespace RailwaySignals
                 { m_Setting.GetOptionLabelLocaleID(nameof(Setting.mastPrefabName)), "Mast asset" },
                 { m_Setting.GetOptionDescLocaleID(nameof(Setting.mastPrefabName)), "Name of the object asset for the post a lineside signal stands on. Heads are modelled without a mast so the same ones can hang from a bridge, so this carries the post on its own. There is no vanilla stand-in; without one the heads are placed unsupported." },
 
-                { m_Setting.GetOptionLabelLocaleID(nameof(Setting.homeHeadPrefabName)), "Home signal head asset" },
-                { m_Setting.GetOptionDescLocaleID(nameof(Setting.homeHeadPrefabName)), "Name of the head asset used where the block ahead holds pointwork, a crossing or a platform. Leave empty to pick one automatically." },
+                { m_Setting.GetOptionLabelLocaleID(nameof(Setting.homeHeadPrefabName)), "Lamp head asset" },
+                { m_Setting.GetOptionDescLocaleID(nameof(Setting.homeHeadPrefabName)), "The plain lamp head, with no \"A\" plate. Used for the upper head of every signal, and for the lower head of a home signal." },
 
-                { m_Setting.GetOptionLabelLocaleID(nameof(Setting.automaticHeadPrefabName)), "Automatic signal head asset" },
-                { m_Setting.GetOptionDescLocaleID(nameof(Setting.automaticHeadPrefabName)), "Name of the head asset used where the block ahead is plain line. These carry an \"A\" plate on the prototype. Leave empty to pick one automatically." },
+                { m_Setting.GetOptionLabelLocaleID(nameof(Setting.automaticHeadPrefabName)), "Automatic lamp head asset" },
+                { m_Setting.GetOptionDescLocaleID(nameof(Setting.automaticHeadPrefabName)), "The lamp head carrying an \"A\" plate. Used for the lower head of an automatic signal, where the block ahead is plain line." },
 
                 { m_Setting.GetOptionLabelLocaleID(nameof(Setting.minGantryTracks)), "Tracks needed for a bridge" },
                 { m_Setting.GetOptionDescLocaleID(nameof(Setting.minGantryTracks)), "How many parallel tracks have to carry signals abreast of each other before they are put on a signal bridge instead of their own lineside posts. Set to zero to always use lineside posts." },

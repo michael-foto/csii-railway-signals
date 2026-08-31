@@ -30,6 +30,8 @@ namespace RailwaySignals
             updateSystem.UpdateAt<SignalPrefabSystem>(SystemUpdatePhase.PrefabUpdate);
             updateSystem.UpdateAt<SignalNetworkSystem>(SystemUpdatePhase.ModificationEnd);
             updateSystem.UpdateAt<SignalAspectSystem>(SystemUpdatePhase.GameSimulation);
+            // The editor never ticks GameSimulation, so without this the aspects never update there.
+            updateSystem.UpdateAt<SignalAspectSystem>(SystemUpdatePhase.EditorSimulation);
         }
 
         public void OnDispose()
