@@ -36,9 +36,6 @@ namespace RailwaySignals
         [SettingsUISection(kSection, kGeneralGroup)]
         public bool signalSubwayTracks { get; set; }
 
-        [SettingsUISection(kSection, kGeneralGroup)]
-        public bool signalTramTracks { get; set; }
-
         /// <summary>Target length of an automatic block on plain line, in metres. Zero places none.</summary>
         [SettingsUISlider(min = 0, max = 2000, step = 50, unit = Unit.kLength)]
         [SettingsUISection(kSection, kBlockGroup)]
@@ -80,21 +77,6 @@ namespace RailwaySignals
         [SettingsUISection(kSection, kPlacementGroup)]
         public float headSpacing { get; set; }
 
-        /// <summary>Asset for the post a lineside signal stands on. Without one, heads have no mast.</summary>
-        [SettingsUITextInput]
-        [SettingsUISection(kSection, kPlacementGroup)]
-        public string mastPrefabName { get; set; }
-
-        /// <summary>Plain lamp head, used for every upper head and for the lower head of a home signal.</summary>
-        [SettingsUITextInput]
-        [SettingsUISection(kSection, kPlacementGroup)]
-        public string homeHeadPrefabName { get; set; }
-
-        /// <summary>Lamp head with an "A" plate, used as the lower head of an automatic signal.</summary>
-        [SettingsUITextInput]
-        [SettingsUISection(kSection, kPlacementGroup)]
-        public string automaticHeadPrefabName { get; set; }
-
         /// <summary>Fewest parallel tracks that get a signal bridge instead of lineside posts. Zero disables them.</summary>
         [SettingsUISlider(min = 0, max = 8, step = 1, unit = Unit.kInteger)]
         [SettingsUISection(kSection, kGantryGroup)]
@@ -116,11 +98,6 @@ namespace RailwaySignals
         [SettingsUISection(kSection, kGantryGroup)]
         public float gantryHeadHeight { get; set; }
 
-        /// <summary>Asset for the signal bridge. Without one, grouped signals stay on lineside posts.</summary>
-        [SettingsUITextInput]
-        [SettingsUISection(kSection, kGantryGroup)]
-        public string gantryPrefabName { get; set; }
-
         [SettingsUIButton]
         [SettingsUISection(kSection, kPlacementGroup)]
         public bool rebuildSignals
@@ -141,10 +118,6 @@ namespace RailwaySignals
                 {
                     types |= TrackTypes.Subway;
                 }
-                if (signalTramTracks)
-                {
-                    types |= TrackTypes.Tram;
-                }
                 return types;
             }
         }
@@ -152,8 +125,7 @@ namespace RailwaySignals
         public override void SetDefaults()
         {
             enableSignals = true;
-            signalSubwayTracks = false;
-            signalTramTracks = false;
+            signalSubwayTracks = true;
             intermediateBlockSpacing = 400;
             intermediateOnBidirectionalTrack = true;
             signalSetback = 6f;
@@ -163,15 +135,11 @@ namespace RailwaySignals
             mediumSpeedCurveRadius = 300;
             mediumSpeedLimit = 70;
             mediumSpeedBlockLength = 120;
-            mastPrefabName = string.Empty;
-            homeHeadPrefabName = string.Empty;
-            automaticHeadPrefabName = string.Empty;
             minGantryTracks = 3;
             maxGantryTrackSpacing = 12f;
             gantryAlignTolerance = 15f;
             gantryMargin = 2f;
             gantryHeadHeight = 5.5f;
-            gantryPrefabName = string.Empty;
         }
 
         public override void Apply()

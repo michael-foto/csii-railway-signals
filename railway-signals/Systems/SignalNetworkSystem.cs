@@ -149,8 +149,7 @@ namespace RailwaySignals.Systems
         {
             CompleteDependency();
 
-            bool hasGantryAsset = m_SignalPrefabSystem.GetSignalPrefab(SignalAsset.Gantry) != Entity.Null;
-            if (!hasGantryAsset && Mod.setting.minGantryTracks > 0)
+            if (Mod.setting.minGantryTracks > 0)
             {
                 Mod.log.Info("No signal bridge asset is installed, so every signal goes on a lineside post.");
             }
@@ -164,12 +163,12 @@ namespace RailwaySignals.Systems
                 m_BlockSpacing = Mod.setting.intermediateBlockSpacing,
                 m_IntermediateOnBidirectional = Mod.setting.intermediateOnBidirectionalTrack,
                 m_Setback = Mod.setting.signalSetback,
-                m_LateralOffset = Mod.setting.signalOffset,
+                m_LateralOffset = 2f,
                 m_LeftHandTraffic = m_CityConfigurationSystem.leftHandTraffic,
                 m_MediumCurviness = 1f / math.max(1f, Mod.setting.mediumSpeedCurveRadius),
                 m_MediumSpeedLimit = Mod.setting.mediumSpeedLimit / 3.6f,
                 m_MediumBlockLength = Mod.setting.mediumSpeedBlockLength,
-                m_MinGantryTracks = hasGantryAsset ? Mod.setting.minGantryTracks : 0,
+                m_MinGantryTracks = Mod.setting.minGantryTracks,
                 m_MaxGantryTrackSpacing = Mod.setting.maxGantryTrackSpacing,
                 m_GantryAlignTolerance = Mod.setting.gantryAlignTolerance,
                 m_GantryMargin = Mod.setting.gantryMargin

@@ -27,7 +27,7 @@ namespace RailwaySignals.Signalling
     /// <summary>
     /// The separate objects a signal is assembled from. Heads are modelled without a mast so the
     /// same ones serve on a lineside post and hung from a bridge. Every signal has two heads: the
-    /// upper one is always a plain lamp, and the lower one carries the "A" plate on an automatic.
+    /// upper one is always a home lamp, and the lower one can be a home or automatic lamp (offset)
     /// </summary>
     public enum SignalAsset : byte
     {
@@ -38,7 +38,9 @@ namespace RailwaySignals.Signalling
         /// <summary>Lamp head carrying an "A" plate, used as the lower head of an automatic.</summary>
         AutomaticHead,
         /// <summary>The bridge spanning a group of parallel tracks.</summary>
-        Gantry
+        Gantry,
+        /// <summary>The catwalk cage and frame that attaches signal heads to a gantry</summary>
+        GantryCage
     }
 
     /// <summary>Which piece of the assembly an object is.</summary>
@@ -47,7 +49,8 @@ namespace RailwaySignals.Signalling
         Mast,
         TopHead,
         BottomHead,
-        Gantry
+        Gantry,
+        GantryCage
     }
 
     /// <summary>
@@ -157,31 +160,23 @@ namespace RailwaySignals.Signalling
         /// <summary>The normal speed head, at the top of the mast.</summary>
         public static SignalLamp TopLamp(this SignalAspect aspect)
         {
-            switch (aspect)
+            return aspect switch
             {
-                case SignalAspect.Caution:
-                case SignalAspect.ReduceToMedium:
-                    return SignalLamp.Yellow;
-                case SignalAspect.Clear:
-                    return SignalLamp.Green;
-                default:
-                    return SignalLamp.Red;
-            }
+                SignalAspect.Caution or SignalAspect.ReduceToMedium => SignalLamp.Yellow,
+                SignalAspect.Clear => SignalLamp.Green,
+                _ => SignalLamp.Red,
+            };
         }
 
         /// <summary>The medium speed head, below the top one.</summary>
         public static SignalLamp BottomLamp(this SignalAspect aspect)
         {
-            switch (aspect)
+            return aspect switch
             {
-                case SignalAspect.MediumCaution:
-                    return SignalLamp.Yellow;
-                case SignalAspect.MediumClear:
-                case SignalAspect.ReduceToMedium:
-                    return SignalLamp.Green;
-                default:
-                    return SignalLamp.Red;
-            }
+                SignalAspect.MediumCaution => SignalLamp.Yellow,
+                SignalAspect.MediumClear or SignalAspect.ReduceToMedium => SignalLamp.Green,
+                _ => SignalLamp.Red,
+            };
         }
     }
 }
