@@ -1,0 +1,62 @@
+{
+    "$id": 0,
+    "$type": "0|Game.Prefabs.RenderPrefab, Game",
+    "name": "Line_Side_Post_Middle Mesh",
+    "active": true,
+    "version": 1,
+    "m_prefabFormat": 0,
+    "components": {
+        "$id": 1,
+        "$type": "1|System.Collections.Generic.List`1[[Game.Prefabs.ComponentBase, Game]], mscorlib",
+        "$rlength": 1,
+        "$rcontent": [
+            {
+                "$id": 2,
+                "$type": "2|Game.Prefabs.LodProperties, Game",
+                "name": "LodProperties",
+                "active": true,
+                "m_Bias": 0,
+                "m_ShadowBias": 0,
+                "m_LodMeshes": {
+                    "$id": 3,
+                    "$type": "3|Game.Prefabs.RenderPrefab[], Game",
+                    "$rlength": 2,
+                    "$rcontent": [
+                        $fstrref:"CID:2598c46efaa8d62135e81938fa36e271",
+                        $fstrref:"CID:6d69c16fdbd14ac0c1652df065cd1292"
+                    ]
+                }
+            }
+        ]
+    },
+    "m_GeometryAsset": $fstrref:"CID:674223f1c1d1baa739200220fc5adec9",
+    "m_SurfaceAssets": {
+        "$id": 4,
+        "$type": "4|Colossal.IO.AssetDatabase.AssetReference`1[[Colossal.IO.AssetDatabase.SurfaceAsset, Colossal.IO.AssetDatabase, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]][], Colossal.IO.AssetDatabase",
+        "$rlength": 1,
+        "$rcontent": [
+            $fstrref:"CID:a787369f1005385cd448f08db8d24604"
+        ]
+    },
+    "m_Bounds": {
+        "$type": "5|Colossal.Mathematics.Bounds3, Colossal.Mathematics",
+        "min": {
+            "$type": "6|Unity.Mathematics.float3, Unity.Mathematics",
+            "x": -0.096,
+            "y": 0.924,
+            "z": -0.0954744
+        },
+        "max": {
+            "$type": 6,
+            "x": 0.0939023942,
+            "y": 1.2,
+            "z": 0.0954744
+        }
+    },
+    "m_SurfaceArea": 0.2215023,
+    "m_IndexCount": 168,
+    "m_VertexCount": 68,
+    "m_MeshCount": 1,
+    "m_IsImpostor": false,
+    "m_ManualVTRequired": false
+}

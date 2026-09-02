@@ -6,6 +6,7 @@ using Game.Net;
 using Game.Objects;
 using Game.Prefabs;
 using Game.Rendering;
+using Game.Serialization;
 using Game.Tools;
 using RailwaySignals.Signalling;
 using Unity.Collections;
@@ -19,7 +20,7 @@ namespace RailwaySignals.Systems
     /// A rebuild recomputes every signal position and block from scratch, then reconciles the
     /// existing post entities against the new plan so unchanged signals keep their entity.
     /// </summary>
-    public partial class SignalNetworkSystem : GameSystemBase
+    public partial class SignalNetworkSystem : GameSystemBase, IPostDeserialize
     {
         private SignalNetwork m_Network;
 
@@ -101,11 +102,31 @@ namespace RailwaySignals.Systems
             m_Settle = kSettleFrames;
         }
 
-        /// <summary>Removes every signal post and forgets the plan. Used when the mod is switched off.</summary>
+        /// <summary>
+        /// Discards signal objects restored from a save written by a version of the mod that still
+        /// persisted them. Runs in the Deserialize phase, before PreCullingSystem has taken an
+        /// interest in them, so marking them Deleted here leaves nothing pointing at them.
+        /// </summary>
+        public void PostDeserialize(Colossal.Serialization.Entities.Context context)
+        {
+            if (m_PartQuery.IsEmptyIgnoreFilter)
+            {
+                return;
+            }
+            Mod.log.Info($"Discarding {m_PartQuery.CalculateEntityCount()} signal objects restored from the save.");
+            EntityManager.AddComponent<Deleted>(m_PartQuery);
+        }
+
+        /// <summary>
+        /// Removes every signal post and forgets the plan. Used when the mod is switched off.
+        /// Deleted rather than DestroyEntity: PreCullingSystem holds an entry per rendered object
+        /// and only stops dereferencing it once it has seen the object carry Deleted, so destroying
+        /// one outright leaves the culling data pointing at an entity that no longer exists.
+        /// </summary>
         public void Clear()
         {
             CompleteDependency();
-            EntityManager.DestroyEntity(m_PartQuery);
+            EntityManager.AddComponent<Deleted>(m_PartQuery);
             m_Network.Clear();
             m_Dirty = false;
         }

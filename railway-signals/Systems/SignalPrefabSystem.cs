@@ -41,6 +41,16 @@ namespace RailwaySignals.Systems
         /// <summary>The prefab to instantiate for this part of a signal, or Entity.Null if the asset is missing.</summary>
         public Entity GetSignalPrefab(SignalAsset asset)
         {
+            // Re-importing an asset destroys its prefab entity and registers a new one, which
+            // leaves the cache pointing at an entity that no longer exists. A missing asset is
+            // held as Null and stays that way until something calls Invalidate.
+            for (int i = 0; m_Resolved && i < m_Prefabs.Length; i++)
+            {
+                if (m_Prefabs[i] != Entity.Null && !EntityManager.Exists(m_Prefabs[i]))
+                {
+                    m_Resolved = false;
+                }
+            }
             if (!m_Resolved)
             {
                 Resolve();

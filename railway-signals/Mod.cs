@@ -3,6 +3,7 @@ using Colossal.Logging;
 using Game;
 using Game.Modding;
 using Game.SceneFlow;
+using Game.Serialization;
 using RailwaySignals.Systems;
 
 namespace RailwaySignals
@@ -32,6 +33,11 @@ namespace RailwaySignals
             updateSystem.UpdateAt<SignalAspectSystem>(SystemUpdatePhase.GameSimulation);
             // The editor never ticks GameSimulation, so without this the aspects never update there.
             updateSystem.UpdateAt<SignalAspectSystem>(SystemUpdatePhase.EditorSimulation);
+            // Hides the signal objects from SerializerSystem, which sits between these two.
+            updateSystem.UpdateBefore<SignalSaveGuardSystem>(SystemUpdatePhase.Serialize);
+            updateSystem.UpdateAfter<SignalSaveGuardSystem>(SystemUpdatePhase.Serialize);
+            // Throws away signal objects left in saves written before the guard existed.
+            updateSystem.UpdateAfter<PostDeserialize<SignalNetworkSystem>>(SystemUpdatePhase.Deserialize);
         }
 
         public void OnDispose()

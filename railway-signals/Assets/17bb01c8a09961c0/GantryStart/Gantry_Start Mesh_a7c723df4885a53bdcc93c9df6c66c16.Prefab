@@ -1,0 +1,73 @@
+{
+    "$id": 0,
+    "$type": "0|Game.Prefabs.RenderPrefab, Game",
+    "name": "Gantry_Start Mesh",
+    "active": true,
+    "version": 1,
+    "m_prefabFormat": 0,
+    "components": {
+        "$id": 1,
+        "$type": "1|System.Collections.Generic.List`1[[Game.Prefabs.ComponentBase, Game]], mscorlib",
+        "$rlength": 2,
+        "$rcontent": [
+            {
+                "$id": 2,
+                "$type": "2|Game.Prefabs.LodProperties, Game",
+                "name": "LodProperties",
+                "active": true,
+                "m_Bias": 0,
+                "m_ShadowBias": 0,
+                "m_LodMeshes": {
+                    "$id": 3,
+                    "$type": "3|Game.Prefabs.RenderPrefab[], Game",
+                    "$rlength": 2,
+                    "$rcontent": [
+                        $fstrref:"CID:60f1dbf77924e289f3e1237e0a5c2cb0",
+                        $fstrref:"CID:ac78192cd6e0132ac04a738cfad5adaf"
+                    ]
+                }
+            },
+            {
+                "$id": 5,
+                "$type": "7|Game.Prefabs.StackProperties, Game",
+                "name": "StackProperties",
+                "active": true,
+                "m_Direction": 1,
+                "m_Order": 2,
+                "m_StartOverlap": 0,
+                "m_EndOverlap": 0,
+                "m_ForbidScaling": true
+            }
+        ]
+    },
+    "m_GeometryAsset": $fstrref:"CID:3285aea8bc9652a71db237d50a77ae1d",
+    "m_SurfaceAssets": {
+        "$id": 4,
+        "$type": "4|Colossal.IO.AssetDatabase.AssetReference`1[[Colossal.IO.AssetDatabase.SurfaceAsset, Colossal.IO.AssetDatabase, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]][], Colossal.IO.AssetDatabase",
+        "$rlength": 1,
+        "$rcontent": [
+            $fstrref:"CID:cef5b5a1d9f09df5b1cb5cb9d3f7aae0"
+        ]
+    },
+    "m_Bounds": {
+        "$type": "5|Colossal.Mathematics.Bounds3, Colossal.Mathematics",
+        "min": {
+            "$type": "6|Unity.Mathematics.float3, Unity.Mathematics",
+            "x": 0.960000038,
+            "y": 0,
+            "z": -1.00568616
+        },
+        "max": {
+            "$type": 6,
+            "x": 3.30000019,
+            "y": 8.708445,
+            "z": 0.300000072
+        }
+    },
+    "m_SurfaceArea": 33.7955132,
+    "m_IndexCount": 29808,
+    "m_VertexCount": 13071,
+    "m_MeshCount": 1,
+    "m_IsImpostor": false,
+    "m_ManualVTRequired": false
+}

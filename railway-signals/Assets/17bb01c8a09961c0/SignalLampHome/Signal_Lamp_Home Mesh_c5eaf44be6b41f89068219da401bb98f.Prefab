@@ -1,0 +1,153 @@
+{
+    "$id": 0,
+    "$type": "0|Game.Prefabs.RenderPrefab, Game",
+    "name": "Signal_Lamp_Home Mesh",
+    "active": true,
+    "version": 1,
+    "m_prefabFormat": 0,
+    "components": {
+        "$id": 1,
+        "$type": "1|System.Collections.Generic.List`1[[Game.Prefabs.ComponentBase, Game]], mscorlib",
+        "$rlength": 2,
+        "$rcontent": [
+            {
+                "$id": 2,
+                "$type": "2|Game.Prefabs.EmissiveProperties, Game",
+                "name": "EmissiveProperties",
+                "active": true,
+                "m_SingleLights": null,
+                "m_MultiLights": {
+                    "$id": 3,
+                    "$type": "3|System.Collections.Generic.List`1[[Game.Prefabs.EmissiveProperties+MultiLightMapping, Game]], mscorlib",
+                    "$rlength": 3,
+                    "$rcontent": [
+                        {
+                            "$id": 4,
+                            "$type": "4|Game.Prefabs.EmissiveProperties+MultiLightMapping, Game",
+                            "previewState": false,
+                            "purpose": 27,
+                            "color": {
+                                "$type": "5|UnityEngine.Color, UnityEngine.CoreModule",
+                                0.294117659,
+                                1,
+                                0,
+                                1
+                            },
+                            "colorOff": {
+                                "$type": 5,
+                                0,
+                                0,
+                                0,
+                                1
+                            },
+                            "intensity": 1.28583789,
+                            "luminance": 0.777703047,
+                            "responseTime": 0,
+                            "animationIndex": -1,
+                            "layerId": 150
+                        },
+                        {
+                            "$id": 5,
+                            "$type": 4,
+                            "previewState": false,
+                            "purpose": 26,
+                            "color": {
+                                "$type": 5,
+                                1,
+                                0.9529412,
+                                0,
+                                1
+                            },
+                            "colorOff": {
+                                "$type": 5,
+                                0,
+                                0,
+                                0,
+                                1
+                            },
+                            "intensity": 1.11835444,
+                            "luminance": 0.8941709,
+                            "responseTime": 0,
+                            "animationIndex": -1,
+                            "layerId": 200
+                        },
+                        {
+                            "$id": 6,
+                            "$type": 4,
+                            "previewState": false,
+                            "purpose": 25,
+                            "color": {
+                                "$type": 5,
+                                1,
+                                0,
+                                0,
+                                1
+                            },
+                            "colorOff": {
+                                "$type": 5,
+                                0,
+                                0,
+                                0,
+                                1
+                            },
+                            "intensity": 4.70205641,
+                            "luminance": 0.2126729,
+                            "responseTime": 0,
+                            "animationIndex": -1,
+                            "layerId": 255
+                        }
+                    ]
+                },
+                "m_AnimationCurves": null,
+                "m_SignalGroupAnimations": null
+            },
+            {
+                "$id": 7,
+                "$type": "6|Game.Prefabs.LodProperties, Game",
+                "name": "LodProperties",
+                "active": true,
+                "m_Bias": 0,
+                "m_ShadowBias": 0,
+                "m_LodMeshes": {
+                    "$id": 8,
+                    "$type": "7|Game.Prefabs.RenderPrefab[], Game",
+                    "$rlength": 2,
+                    "$rcontent": [
+                        $fstrref:"CID:3ed20d2f3caa6cadbbc244139048931f",
+                        $fstrref:"CID:949fea97f00a47aad2e6225fedd8af1a"
+                    ]
+                }
+            }
+        ]
+    },
+    "m_GeometryAsset": $fstrref:"CID:8fee760a9914568c56c18e018b23d9c5",
+    "m_SurfaceAssets": {
+        "$id": 9,
+        "$type": "8|Colossal.IO.AssetDatabase.AssetReference`1[[Colossal.IO.AssetDatabase.SurfaceAsset, Colossal.IO.AssetDatabase, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]][], Colossal.IO.AssetDatabase",
+        "$rlength": 1,
+        "$rcontent": [
+            $fstrref:"CID:5a0e7cf74b5e972c14fbdf8d6629a1c0"
+        ]
+    },
+    "m_Bounds": {
+        "$type": "9|Colossal.Mathematics.Bounds3, Colossal.Mathematics",
+        "min": {
+            "$type": "10|Unity.Mathematics.float3, Unity.Mathematics",
+            "x": -0.6624,
+            "y": 3.87896156,
+            "z": -0.153635263
+        },
+        "max": {
+            "$type": 10,
+            "x": 0.09063804,
+            "y": 5.172,
+            "z": 0.579
+        }
+    },
+    "m_SurfaceArea": 2.036837,
+    "m_IndexCount": 3660,
+    "m_VertexCount": 1278,
+    "m_MeshCount": 1,
+    "m_IsImpostor": false,
+    "m_ManualVTRequired": false
+}
