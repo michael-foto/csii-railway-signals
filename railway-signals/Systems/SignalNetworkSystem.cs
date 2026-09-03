@@ -28,8 +28,6 @@ namespace RailwaySignals.Systems
 
         private EntityQuery m_ChangedTrackQuery;
 
-        private EntityQuery m_SignalQuery;
-
         private EntityQuery m_PartQuery;
 
         private SignalPrefabSystem m_SignalPrefabSystem;
@@ -49,6 +47,40 @@ namespace RailwaySignals.Systems
 
         /// <summary>How often unregistered parts are offered to the culling system again.</summary>
         private const int kAdoptInterval = 30;
+
+        // Placement baselines, tuned in game and fixed here. Every one has a matching Advanced
+        // setting that offsets it, so honing a value means moving a slider and then editing the
+        // constant it belongs to, not adding a knob.
+
+        /// <summary>How far back from the block boundary a signal stands, in metres.</summary>
+        private const float kSetback = 3f;
+
+        /// <summary>Distance from track centre to a lineside post, in metres.</summary>
+        private const float kLateralOffset = 2f;
+
+        /// <summary>Drop from the normal speed head to the medium speed head below it, in metres.</summary>
+        private const float kHeadSpacing = 1.15f;
+
+        /// <summary>
+        /// How far every part is lowered from the lane centreline, in metres. The lane sits a little
+        /// above the railhead the models are built from, so without this the whole assembly floats.
+        /// </summary>
+        private const float kGroundDrop = 0.15f;
+
+        /// <summary>Structure width added beyond the outermost track a bridge spans, in metres.</summary>
+        private const float kGantryMargin = 7f;
+
+        /// <summary>How far off its own track centre a bridge-carried signal sits, in metres.</summary>
+        private const float kGantryLateralOffset = 1.5f;
+
+        /// <summary>Height of the normal speed head above rail level on a bridge, in metres.</summary>
+        private const float kGantryHeadHeight = 2.25f;
+
+        /// <summary>Head offset from the cage across the track, in metres.</summary>
+        private const float kGantryHeadSide = 0.65f;
+
+        /// <summary>Head offset from the cage along the track, in metres.</summary>
+        private const float kGantryHeadForward = 1.05f;
 
         public ref SignalNetwork network => ref m_Network;
 
@@ -75,11 +107,6 @@ namespace RailwaySignals.Systems
             {
                 All = new[] { ComponentType.ReadOnly<Game.Net.TrackLane>() },
                 Any = new[] { ComponentType.ReadOnly<Created>(), ComponentType.ReadOnly<Updated>(), ComponentType.ReadOnly<Deleted>() }
-            });
-            m_SignalQuery = GetEntityQuery(new EntityQueryDesc
-            {
-                All = new[] { ComponentType.ReadOnly<RailwaySignal>() },
-                None = new[] { ComponentType.ReadOnly<Deleted>() }
             });
             m_PartQuery = GetEntityQuery(new EntityQueryDesc
             {
@@ -146,7 +173,9 @@ namespace RailwaySignals.Systems
             }
             if (!Mod.setting.enableSignals)
             {
-                if (!m_SignalQuery.IsEmptyIgnoreFilter)
+                // Tested against the query Clear empties. Anything else leaves parts standing with
+                // no rebuild to reconcile them, because this returns before the dirty check.
+                if (!m_PartQuery.IsEmptyIgnoreFilter)
                 {
                     Clear();
                 }
@@ -183,8 +212,9 @@ namespace RailwaySignals.Systems
                 m_LaneOverlaps = GetBufferLookup<LaneOverlap>(isReadOnly: true),
                 m_BlockSpacing = Mod.setting.intermediateBlockSpacing,
                 m_IntermediateOnBidirectional = Mod.setting.intermediateOnBidirectionalTrack,
-                m_Setback = Mod.setting.signalSetback,
-                m_LateralOffset = 2f,
+                m_Setback = kSetback + Mod.setting.adjustSetback,
+                m_LateralOffset = kLateralOffset + Mod.setting.adjustLateral,
+                m_HeightAdjust = Mod.setting.adjustHeight - kGroundDrop,
                 m_LeftHandTraffic = m_CityConfigurationSystem.leftHandTraffic,
                 m_MediumCurviness = 1f / math.max(1f, Mod.setting.mediumSpeedCurveRadius),
                 m_MediumSpeedLimit = Mod.setting.mediumSpeedLimit / 3.6f,
@@ -192,12 +222,15 @@ namespace RailwaySignals.Systems
                 m_MinGantryTracks = Mod.setting.minGantryTracks,
                 m_MaxGantryTrackSpacing = Mod.setting.maxGantryTrackSpacing,
                 m_GantryAlignTolerance = Mod.setting.gantryAlignTolerance,
-                m_GantryMargin = Mod.setting.gantryMargin
+                m_GantryMargin = kGantryMargin + Mod.setting.adjustGantryMargin,
+                m_GantryLateralOffset = kGantryLateralOffset + Mod.setting.adjustGantryLateral,
+                m_MinGantryTrackSeparation = Mod.setting.minGantryTrackSeparation
             };
             planner.Plan(trackLanes, ref m_Network);
             trackLanes.Dispose();
 
             PlaceSignalObjects();
+            WriteSignalComponents();
 
             Mod.log.Info($"Signal plan rebuilt from {laneCount} track lanes: {m_Network.m_Sites.Length} signals over "
                 + $"{m_Network.m_BlockLanes.Length} block lanes, {m_Network.m_Gantries.Length} on bridges; "
@@ -382,22 +415,28 @@ namespace RailwaySignals.Systems
             return entity;
         }
 
-        /// <summary>Where a head sits, given the assembly is taller on a bridge than on a post.</summary>
+        /// <summary>
+        /// Where a part sits, given the assembly hangs higher on a bridge than it stands on a post.
+        /// Only the height varies by part: the site position already carries the horizontal offset
+        /// the planner chose, so the cage and the heads it holds share one vertical line.
+        /// </summary>
         private static Transform GetTransformedPosition(SignalSiteData site, SignalPartKind kind)
         {
             float3 position = site.m_Position;
             if (kind is SignalPartKind.TopHead or SignalPartKind.BottomHead)
             {
-                // If this is on a gantry, move it up a little and forward to clear the cage
-                float head = site.m_Gantry >= 0 ? Mod.setting.gantryHeadHeight : 0;
-                position.x += site.m_Gantry >= 0 ? Mod.setting.gantryHeadOffset : 0;
-                // If this is a bottom head, move it down 1.1m (spacing distance)
-                position.y += kind == SignalPartKind.BottomHead ? head - 1.1f : head;
-            }
-            else if (kind is SignalPartKind.Mast)
-            {
-                // If this is on a gantry, move it forward to clear the lattice
-                position.x += site.m_Gantry >= 0 ? Mod.setting.gantryCageOffset : 0;
+                float head = site.m_Gantry >= 0 ? kGantryHeadHeight + Mod.setting.adjustGantryHeadHeight : 0f;
+                float spacing = kHeadSpacing + Mod.setting.adjustHeadSpacing;
+                position.y += kind == SignalPartKind.BottomHead ? head - spacing : head;
+                if (site.m_Gantry >= 0)
+                {
+                    // In the signal's own frame, so the offset follows the track rather than world X
+                    var offset = new float3(
+                        kGantryHeadSide + Mod.setting.adjustGantryHeadSide,
+                        0f,
+                        kGantryHeadForward + Mod.setting.adjustGantryHeadForward);
+                    position += math.rotate(site.m_Rotation, offset);
+                }
             }
 
             return new Transform(position, site.m_Rotation);
@@ -567,112 +606,6 @@ namespace RailwaySignals.Systems
             return EntityManager.Exists(entity) ? entity.Index.ToString() : $"{entity.Index}!dead";
         }
 
-        /// <summary>Which part of a signal an object is. The asset used for it is chosen separately.</summary>
-        private enum SignalPart
-        {
-            Mast,
-            TopHead,
-            BottomHead
-        }
-
-        private void PlaceParts(SignalAsset asset, SignalPart part, NativeList<int> siteIndices, EntityArchetype[] archetypes, Entity[] prefabs)
-        {
-            EntityArchetype archetype = archetypes[(int)asset];
-            if (siteIndices.Length == 0 || !archetype.Valid)
-            {
-                return;
-            }
-            Entity prefab = prefabs[(int)asset];
-            var created = new NativeArray<Entity>(siteIndices.Length, Allocator.Temp);
-            EntityManager.CreateEntity(archetype, created);
-
-            for (int i = 0; i < created.Length; i++)
-            {
-                int siteIndex = siteIndices[i];
-                SignalSiteData site = m_Network.m_Sites[siteIndex];
-                Entity entity = created[i];
-                float3 position = site.m_Position;
-                position.y += GetPartHeight(site, part);
-                Initialize(entity, prefab, position, site.m_Rotation);
-
-                if (part == SignalPart.Mast)
-                {
-                    // A mast built as a stack grows its shaft to reach whatever head height is set,
-                    // so one asset serves any height rather than fixing it in the model.
-                    SetStackRange(entity, prefab, 0f, Mod.setting.signalHeadHeight);
-                    site.m_Mast = entity;
-                }
-                else if (part == SignalPart.BottomHead)
-                {
-                    site.m_BottomHead = entity;
-                }
-                else
-                {
-                    site.m_Signal = entity;
-                }
-                m_Network.m_Sites[siteIndex] = site;
-            }
-            created.Dispose();
-        }
-
-        /// <summary>Height above the base of the signal at which a part sits.</summary>
-        private static float GetPartHeight(SignalSiteData site, SignalPart part)
-        {
-            if (part == SignalPart.Mast)
-            {
-                return 0f;
-            }
-            float head = site.m_Gantry >= 0 ? Mod.setting.gantryHeadHeight : Mod.setting.signalHeadHeight;
-            return part == SignalPart.BottomHead ? head - Mod.setting.headSpacing : head;
-        }
-
-        private void PlaceGantries(EntityArchetype archetype, Entity prefab)
-        {
-            if (m_Network.m_Gantries.Length == 0 || !archetype.Valid)
-            {
-                return;
-            }
-            var created = new NativeArray<Entity>(m_Network.m_Gantries.Length, Allocator.Temp);
-            EntityManager.CreateEntity(archetype, created);
-            for (int i = 0; i < created.Length; i++)
-            {
-                GantryData gantry = m_Network.m_Gantries[i];
-                Entity entity = created[i];
-                Initialize(entity, prefab, gantry.m_Position, gantry.m_Rotation);
-                // The beam mesh tiles between the leg meshes to fill this range along the local X
-                // axis, which is how one structure covers any number of tracks.
-                SetStackRange(entity, prefab, -gantry.m_Span, gantry.m_Span);
-                gantry.m_Entity = entity;
-                m_Network.m_Gantries[i] = gantry;
-            }
-            created.Dispose();
-        }
-
-        /// <summary>
-        /// Brings one object into being. Deliberately no Owner or Secondary: those put the object
-        /// into SecondaryObjectReferencesSystem's query, whose Burst job indexes the owner's
-        /// SubObject buffer without checking it exists, and a track edge only has that buffer if its
-        /// composition declares sub-objects. Lifetime is handled instead by RailwaySignalPart, which
-        /// every plan rebuild clears out wholesale.
-        /// </summary>
-        private void Initialize(Entity entity, Entity prefab, float3 position, quaternion rotation)
-        {
-            EntityManager.SetComponentData(entity, new PrefabRef(prefab));
-            EntityManager.SetComponentData(entity, new Game.Objects.Transform(position, rotation));
-            if (EntityManager.HasComponent<PseudoRandomSeed>(entity))
-            {
-                EntityManager.SetComponentData(entity, new PseudoRandomSeed(ref m_Random));
-            }
-            EntityManager.AddComponentData(entity, default(RailwaySignalPart));
-            EntityManager.AddComponent<Created>(entity);
-            EntityManager.AddComponent<Updated>(entity);
-        }
-
-        /// <summary>
-        /// Sets how far a stacked object tiles along its own axis. The game never leaves a range
-        /// narrower than the two end pieces, so it is put through the same alignment the base game
-        /// applies; a range the end pieces cannot fit inside produces a degenerate tiling.
-        /// </summary>
         private void SetStackRange(Entity entity, Entity prefab, float min, float max)
         {
             if (!EntityManager.HasComponent<Game.Objects.Stack>(entity))

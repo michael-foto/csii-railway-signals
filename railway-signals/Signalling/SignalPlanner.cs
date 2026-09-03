@@ -34,8 +34,11 @@ namespace RailwaySignals.Signalling
         /// <summary>How far back from the boundary the signal stands, in metres.</summary>
         public float m_Setback;
 
-        /// <summary>Distance from track centre to the signal post, in metres.</summary>
+        /// <summary>Distance from track centre to a lineside post, in metres.</summary>
         public float m_LateralOffset;
+
+        /// <summary>Raises or lowers every placed part from the lane centreline, in metres.</summary>
+        public float m_HeightAdjust;
 
         public bool m_LeftHandTraffic;
 
@@ -60,10 +63,25 @@ namespace RailwaySignals.Signalling
         /// <summary>Structure width added beyond the outermost track, in metres.</summary>
         public float m_GantryMargin;
 
+        /// <summary>
+        /// How far to the driver's side of the track centre a bridge-carried signal hangs, in
+        /// metres. The overhead wiring runs down the middle of the track, so a head sitting on the
+        /// centreline would foul it.
+        /// </summary>
+        public float m_GantryLateralOffset;
+
+        /// <summary>
+        /// Closest two signals on one bridge may sit across the track, in metres. Approaches to a
+        /// junction run nearly parallel a few metres apart, so without this the diverging routes of
+        /// one switch each claim a slot and their heads land on top of each other.
+        /// </summary>
+        public float m_MinGantryTrackSeparation;
+
         private const int kMaxBlockLanes = 512;
 
         /// <summary>Tracks must run within about 20 degrees of each other to share a bridge.</summary>
         private const float kParallelDot = 0.94f;
+
 
         public void Plan(NativeList<Entity> trackLanes, ref SignalNetwork network)
         {
@@ -347,6 +365,7 @@ namespace RailwaySignals.Signalling
             float3 right = math.normalizesafe(math.cross(math.up(), travel), new float3(1f, 0f, 0f));
 
             position = trackPosition + right * (m_LeftHandTraffic ? -m_LateralOffset : m_LateralOffset);
+            position.y += m_HeightAdjust;
             rotation = quaternion.LookRotationSafe(-travel, math.up());
         }
 
@@ -526,10 +545,34 @@ namespace RailwaySignals.Signalling
                     {
                         continue;
                     }
+                    if (SharesTrackWithGroup(ref network, group, candidate))
+                    {
+                        continue;
+                    }
                     taken[i] = true;
                     group.Add(i);
                 }
             }
+        }
+
+        /// <summary>
+        /// Whether a signal stands on effectively the same alignment as one already in the group.
+        /// The heads of two such signals would be hung on top of each other, so the second is left
+        /// off the bridge rather than given a slot of its own.
+        /// </summary>
+        private bool SharesTrackWithGroup(ref SignalNetwork network, NativeList<int> group, SignalSiteData candidate)
+        {
+            for (int i = 0; i < group.Length; i++)
+            {
+                SignalSiteData member = network.m_Sites[group[i]];
+                float3 delta = candidate.m_TrackPosition - member.m_TrackPosition;
+                float across = math.length(delta - member.m_Direction * math.dot(delta, member.m_Direction));
+                if (across < m_MinGantryTrackSeparation)
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         private void AddGantry(ref SignalNetwork network, NativeList<int> group)
@@ -563,7 +606,7 @@ namespace RailwaySignals.Signalling
             int gantry = network.m_Gantries.Length;
             float3 position = centre + right * ((acrossMin + acrossMax) * 0.5f);
             position += direction * (alongCentre - math.dot(position, direction));
-            position.y = railLevel;
+            position.y = railLevel + m_HeightAdjust;
 
             network.m_Gantries.Add(new GantryData
             {
@@ -577,9 +620,12 @@ namespace RailwaySignals.Signalling
             for (int i = 0; i < group.Length; i++)
             {
                 SignalSiteData site = network.m_Sites[group[i]];
+                // Squared onto the line of the structure but kept over its own track, then stepped
+                // to the driver's side so the head clears the overhead wiring on the centreline.
                 float3 head = site.m_TrackPosition;
                 head += direction * (alongCentre - math.dot(head, direction));
-                head.y = railLevel;
+                head += right * (m_LeftHandTraffic ? -m_GantryLateralOffset : m_GantryLateralOffset);
+                head.y = railLevel + m_HeightAdjust;
                 site.m_Position = head;
                 site.m_Rotation = quaternion.LookRotationSafe(-direction, math.up());
                 site.m_Gantry = gantry;

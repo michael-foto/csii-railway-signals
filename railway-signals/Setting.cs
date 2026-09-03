@@ -9,8 +9,8 @@ using Unity.Entities;
 namespace RailwaySignals
 {
     [FileLocation(nameof(RailwaySignals))]
-    [SettingsUIGroupOrder(kGeneralGroup, kBlockGroup, kSpeedGroup, kPlacementGroup, kGantryGroup)]
-    [SettingsUIShowGroupName(kGeneralGroup, kBlockGroup, kSpeedGroup, kPlacementGroup, kGantryGroup)]
+    [SettingsUIGroupOrder(kGeneralGroup, kBlockGroup, kSpeedGroup, kGantryGroup, kAdvancedGroup)]
+    [SettingsUIShowGroupName(kGeneralGroup, kBlockGroup, kSpeedGroup, kGantryGroup, kAdvancedGroup)]
     public class Setting : ModSetting
     {
         public const string kSection = "Main";
@@ -21,7 +21,7 @@ namespace RailwaySignals
 
         public const string kSpeedGroup = "Speeds";
 
-        public const string kPlacementGroup = "Placement";
+        public const string kAdvancedGroup = "Advanced";
 
         public const string kGantryGroup = "Gantries";
 
@@ -59,24 +59,6 @@ namespace RailwaySignals
         [SettingsUISection(kSection, kSpeedGroup)]
         public int mediumSpeedBlockLength { get; set; }
 
-        [SettingsUISlider(min = 0f, max = 30f, step = 0.5f, unit = Unit.kLength, scalarMultiplier = 1f)]
-        [SettingsUISection(kSection, kPlacementGroup)]
-        public float signalSetback { get; set; }
-
-        [SettingsUISlider(min = 0f, max = 10f, step = 0.25f, unit = Unit.kLength, scalarMultiplier = 1f)]
-        [SettingsUISection(kSection, kPlacementGroup)]
-        public float signalOffset { get; set; }
-
-        /// <summary>Height of the normal speed head above rail level on a lineside post, in metres.</summary>
-        [SettingsUISlider(min = 1f, max = 10f, step = 0.25f, unit = Unit.kLength, scalarMultiplier = 1f)]
-        [SettingsUISection(kSection, kPlacementGroup)]
-        public float signalHeadHeight { get; set; }
-
-        /// <summary>Gap between the normal speed head and the medium speed head below it, in metres.</summary>
-        [SettingsUISlider(min = 0.25f, max = 4f, step = 0.05f, unit = Unit.kLength, scalarMultiplier = 1f)]
-        [SettingsUISection(kSection, kPlacementGroup)]
-        public float headSpacing { get; set; }
-
         /// <summary>Fewest parallel tracks that get a signal bridge instead of lineside posts. Zero disables them.</summary>
         [SettingsUISlider(min = 0, max = 8, step = 1, unit = Unit.kInteger)]
         [SettingsUISection(kSection, kGantryGroup)]
@@ -90,24 +72,58 @@ namespace RailwaySignals
         [SettingsUISection(kSection, kGantryGroup)]
         public float gantryAlignTolerance { get; set; }
 
-        [SettingsUISlider(min = 0f, max = 10f, step = 0.25f, unit = Unit.kLength, scalarMultiplier = 1f)]
+        /// <summary>Closest two signals on one bridge may sit across the track, in metres.</summary>
+        [SettingsUISlider(min = 0f, max = 8f, step = 0.25f, unit = Unit.kLength, scalarMultiplier = 1f)]
         [SettingsUISection(kSection, kGantryGroup)]
-        public float gantryMargin { get; set; }
+        public float minGantryTrackSeparation { get; set; }
 
-        [SettingsUISlider(min = -2f, max = 5f, step = 0.25f, unit = Unit.kLength, scalarMultiplier = 1f)]
-        [SettingsUISection(kSection, kGantryGroup)]
-        public float gantryHeadHeight { get; set; }
+        /// <summary>Offsets the fixed setback of a signal from its block boundary, in metres.</summary>
+        [SettingsUISlider(min = -10f, max = 10f, step = 0.25f, unit = Unit.kLength, scalarMultiplier = 1f)]
+        [SettingsUISection(kSection, kAdvancedGroup)]
+        public float adjustSetback { get; set; }
 
-        [SettingsUISlider(min = -2f, max = 5f, step = 0.25f, unit = Unit.kLength, scalarMultiplier = 1f)]
-        [SettingsUISection(kSection, kGantryGroup)]
-        public float gantryHeadOffset { get; set; }
+        /// <summary>Offsets how far a lineside post stands from the track centre, in metres.</summary>
+        [SettingsUISlider(min = -3f, max = 3f, step = 0.05f, unit = Unit.kLength, scalarMultiplier = 1f)]
+        [SettingsUISection(kSection, kAdvancedGroup)]
+        public float adjustLateral { get; set; }
 
-        [SettingsUISlider(min = -2f, max = 5f, step = 0.25f, unit = Unit.kLength, scalarMultiplier = 1f)]
-        [SettingsUISection(kSection, kGantryGroup)]
-        public float gantryCageOffset { get; set; }
+        /// <summary>Raises or lowers every part of every signal, in metres.</summary>
+        [SettingsUISlider(min = -2f, max = 2f, step = 0.05f, unit = Unit.kLength, scalarMultiplier = 1f)]
+        [SettingsUISection(kSection, kAdvancedGroup)]
+        public float adjustHeight { get; set; }
+
+        /// <summary>Offsets the gap between the two heads of a signal, in metres.</summary>
+        [SettingsUISlider(min = -1f, max = 1f, step = 0.05f, unit = Unit.kLength, scalarMultiplier = 1f)]
+        [SettingsUISection(kSection, kAdvancedGroup)]
+        public float adjustHeadSpacing { get; set; }
+
+        /// <summary>Offsets how far a bridge extends beyond the tracks it spans, in metres.</summary>
+        [SettingsUISlider(min = -6f, max = 6f, step = 0.25f, unit = Unit.kLength, scalarMultiplier = 1f)]
+        [SettingsUISection(kSection, kAdvancedGroup)]
+        public float adjustGantryMargin { get; set; }
+
+        /// <summary>Offsets how far off its track centre a bridge-carried signal sits, in metres.</summary>
+        [SettingsUISlider(min = -3f, max = 3f, step = 0.05f, unit = Unit.kLength, scalarMultiplier = 1f)]
+        [SettingsUISection(kSection, kAdvancedGroup)]
+        public float adjustGantryLateral { get; set; }
+
+        /// <summary>Offsets the height of a bridge-carried head above rail level, in metres.</summary>
+        [SettingsUISlider(min = -3f, max = 3f, step = 0.05f, unit = Unit.kLength, scalarMultiplier = 1f)]
+        [SettingsUISection(kSection, kAdvancedGroup)]
+        public float adjustGantryHeadHeight { get; set; }
+
+        /// <summary>Offsets a bridge-carried head from its cage across the track, in metres.</summary>
+        [SettingsUISlider(min = -2f, max = 2f, step = 0.05f, unit = Unit.kLength, scalarMultiplier = 1f)]
+        [SettingsUISection(kSection, kAdvancedGroup)]
+        public float adjustGantryHeadSide { get; set; }
+
+        /// <summary>Offsets a bridge-carried head from its cage along the track, in metres.</summary>
+        [SettingsUISlider(min = -2f, max = 2f, step = 0.05f, unit = Unit.kLength, scalarMultiplier = 1f)]
+        [SettingsUISection(kSection, kAdvancedGroup)]
+        public float adjustGantryHeadForward { get; set; }
 
         [SettingsUIButton]
-        [SettingsUISection(kSection, kPlacementGroup)]
+        [SettingsUISection(kSection, kGeneralGroup)]
         public bool rebuildSignals
         {
             set
@@ -136,18 +152,22 @@ namespace RailwaySignals
             signalSubwayTracks = true;
             intermediateBlockSpacing = 400;
             intermediateOnBidirectionalTrack = true;
-            signalSetback = 6f;
-            signalOffset = 3.5f;
-            signalHeadHeight = 4f;
-            headSpacing = 1.1f;
             mediumSpeedCurveRadius = 300;
             mediumSpeedLimit = 70;
             mediumSpeedBlockLength = 120;
             minGantryTracks = 3;
             maxGantryTrackSpacing = 12f;
             gantryAlignTolerance = 15f;
-            gantryMargin = 2f;
-            gantryHeadHeight = 5.5f;
+            minGantryTrackSeparation = 2.5f;
+            adjustSetback = 0f;
+            adjustLateral = 0f;
+            adjustHeight = 0f;
+            adjustHeadSpacing = 0f;
+            adjustGantryMargin = 0f;
+            adjustGantryLateral = 0f;
+            adjustGantryHeadHeight = 0f;
+            adjustGantryHeadSide = 0f;
+            adjustGantryHeadForward = 0f;
         }
 
         public override void Apply()
