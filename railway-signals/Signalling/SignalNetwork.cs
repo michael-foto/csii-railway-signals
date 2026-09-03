@@ -17,7 +17,27 @@ namespace RailwaySignals.Signalling
 
         public SignalClass m_Class;
 
+        /// <summary>Speed the signal is admitting a train at, resolved each tick from the set route.</summary>
         public SignalSpeed m_Speed;
+
+        /// <summary>
+        /// Some route through the block reaches another signal. False means the block only runs into
+        /// buffers, which a signal can never clear for.
+        /// </summary>
+        public bool m_HasClearRoute;
+
+        /// <summary>
+        /// Stands at the stop blocks at the end of the track. Nothing lies beyond it, so it is a
+        /// home signal permanently at danger and the signal behind it warns for it.
+        /// </summary>
+        public bool m_AtBuffers;
+
+        /// <summary>
+        /// Some route through the block reaches another signal without crossing a medium speed lane.
+        /// Read when no route is set and the choice has to be made without knowing which way a train
+        /// will go, where the least restrictive road is the one to show.
+        /// </summary>
+        public bool m_HasNormalRoute;
 
         /// <summary>On a lineside signal, this carries the post frame. On a gantry, this holds the signal gantry cage.</summary>
         public Entity m_Mast;
@@ -98,6 +118,12 @@ namespace RailwaySignals.Signalling
 
         public NativeList<int2> m_SuccessorRanges;
 
+        /// <summary>
+        /// Lanes whose geometry calls for medium speed. Worked out once per plan so the aspect pass
+        /// can price a route by membership rather than re-deriving the criteria.
+        /// </summary>
+        public NativeParallelHashSet<Entity> m_MediumLanes;
+
         /// <summary>Maps an approach lane to the site standing at its exit.</summary>
         public NativeParallelHashMap<DirectedLane, int> m_SiteByApproach;
 
@@ -115,6 +141,7 @@ namespace RailwaySignals.Signalling
                 m_Successors = new NativeList<int>(512, allocator),
                 m_SuccessorRanges = new NativeList<int2>(256, allocator),
                 m_SiteByApproach = new NativeParallelHashMap<DirectedLane, int>(256, allocator),
+                m_MediumLanes = new NativeParallelHashSet<Entity>(512, allocator),
                 m_Gantries = new NativeList<GantryData>(32, allocator),
                 m_IsCreated = true
             };
@@ -128,6 +155,7 @@ namespace RailwaySignals.Signalling
             m_Successors.Clear();
             m_SuccessorRanges.Clear();
             m_SiteByApproach.Clear();
+            m_MediumLanes.Clear();
             m_Gantries.Clear();
         }
 
@@ -143,6 +171,7 @@ namespace RailwaySignals.Signalling
             m_Successors.Dispose();
             m_SuccessorRanges.Dispose();
             m_SiteByApproach.Dispose();
+            m_MediumLanes.Dispose();
             m_Gantries.Dispose();
             m_IsCreated = false;
         }

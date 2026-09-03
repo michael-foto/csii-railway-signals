@@ -82,6 +82,9 @@ namespace RailwaySignals.Signalling
         /// <summary>Tracks must run within about 20 degrees of each other to share a bridge.</summary>
         private const float kParallelDot = 0.94f;
 
+        /// <summary>How far short of the stop blocks a buffer signal stands, in metres.</summary>
+        private const float kBufferSetback = 0.5f;
+
 
         public void Plan(NativeList<Entity> trackLanes, ref SignalNetwork network)
         {
@@ -113,9 +116,13 @@ namespace RailwaySignals.Signalling
                     {
                         continue;
                     }
-                    if (IsJunctionApproach(approach, ref scratch, ref scratch2) || IsPlatformExit(approach, ref scratch))
+                    if (RunsIntoBuffers(approach, ref scratch))
                     {
-                        AddSite(approach, ref network);
+                        AddSite(approach, atBuffers: true, ref network);
+                    }
+                    else if (IsJunctionApproach(approach, ref scratch, ref scratch2) || IsPlatformExit(approach, ref scratch))
+                    {
+                        AddSite(approach, atBuffers: false, ref network);
                     }
                 }
             }
@@ -259,7 +266,7 @@ namespace RailwaySignals.Signalling
                     {
                         continue;
                     }
-                    AddSite(lane, ref network);
+                    AddSite(lane, atBuffers: false, ref network);
                     Push(lane, 0f, ref stack, ref scratch);
                     RunWalk(ref stack, ref visited, ref network, ref scratch, ref scratch2);
                 }
@@ -286,7 +293,7 @@ namespace RailwaySignals.Signalling
                 }
                 else if (distance >= m_BlockSpacing && IsPlainLine(walk.m_Lane, ref scratch, ref scratch2))
                 {
-                    AddSite(walk.m_Lane, ref network);
+                    AddSite(walk.m_Lane, atBuffers: false, ref network);
                     distance = 0f;
                 }
                 Push(walk.m_Lane, distance, ref stack, ref scratch);
@@ -325,13 +332,14 @@ namespace RailwaySignals.Signalling
             return scratch2.Length == 1;
         }
 
-        private void AddSite(DirectedLane approach, ref SignalNetwork network)
+        private void AddSite(DirectedLane approach, bool atBuffers, ref SignalNetwork network)
         {
             if (network.m_SiteByApproach.ContainsKey(approach))
             {
                 return;
             }
-            GetPlacement(approach, out float3 position, out quaternion rotation, out float3 trackPosition, out float3 travel);
+            float setback = atBuffers ? kBufferSetback : m_Setback;
+            GetPlacement(approach, setback, out float3 position, out quaternion rotation, out float3 trackPosition, out float3 travel);
             network.m_SiteByApproach.Add(approach, network.m_Sites.Length);
             network.m_Sites.Add(new SignalSiteData
             {
@@ -342,6 +350,7 @@ namespace RailwaySignals.Signalling
                 m_TrackPosition = trackPosition,
                 m_Direction = travel,
                 m_Gantry = -1,
+                m_AtBuffers = atBuffers,
                 m_Class = SignalClass.Home,
                 m_Speed = SignalSpeed.Normal,
                 m_Aspect = SignalAspect.Stop
@@ -352,11 +361,11 @@ namespace RailwaySignals.Signalling
         /// Puts the post beside the track on the driver's side, set back from the boundary, with its
         /// forward axis pointing at the approaching train.
         /// </summary>
-        private void GetPlacement(DirectedLane approach, out float3 position, out quaternion rotation, out float3 trackPosition, out float3 travel)
+        private void GetPlacement(DirectedLane approach, float setbackMetres, out float3 position, out quaternion rotation, out float3 trackPosition, out float3 travel)
         {
             Bezier4x3 bezier = m_Graph.m_CurveData[approach.m_Lane].m_Bezier;
             float length = math.max(1f, m_Graph.GetLength(approach.m_Lane));
-            float setback = math.saturate(m_Setback / length);
+            float setback = math.saturate(setbackMetres / length);
             float t = approach.m_Forward ? 1f - setback : setback;
 
             trackPosition = MathUtils.Position(bezier, t);
@@ -425,35 +434,117 @@ namespace RailwaySignals.Signalling
         /// </summary>
         private void ClassifySignals(ref SignalNetwork network, ref NativeList<DirectedLane> scratch)
         {
+            // Priced first for the whole network, because HasRoute below tests membership of this
+            // set and would otherwise see it half filled for the sites it reaches early.
+            for (int i = 0; i < network.m_BlockLanes.Length; i++)
+            {
+                Entity lane = network.m_BlockLanes[i].m_Lane;
+                if (IsMedium(lane))
+                {
+                    network.m_MediumLanes.Add(lane);
+                }
+            }
+
             for (int i = 0; i < network.m_Sites.Length; i++)
             {
                 SignalSiteData site = network.m_Sites[i];
                 int2 lanes = network.m_BlockRanges[i];
                 bool interlocked = network.m_SuccessorRanges[i].y > 1 || IsPlatform(site.m_Approach.m_Lane);
-                float length = 0f;
-                float curviness = 0f;
-                float speedLimit = float.MaxValue;
 
                 for (int j = lanes.x; j < lanes.x + lanes.y; j++)
                 {
                     DirectedLane lane = network.m_BlockLanes[j];
-                    if (!m_Graph.m_TrackLaneData.TryGetComponent(lane.m_Lane, out var trackLane))
+                    if (!m_Graph.m_TrackLaneData.HasComponent(lane.m_Lane))
                     {
                         continue;
                     }
-                    length += m_Graph.GetLength(lane.m_Lane);
-                    curviness = math.max(curviness, trackLane.m_Curviness);
-                    speedLimit = math.min(speedLimit, trackLane.m_SpeedLimit);
                     interlocked |= HasPointwork(lane.m_Lane) || IsPlatform(lane.m_Lane) || HasCrossingOverlap(lane.m_Lane) || IsConverging(lane, ref scratch);
                 }
 
-                site.m_Class = interlocked ? SignalClass.Home : SignalClass.Automatic;
-                site.m_Speed = (lanes.y == 0 || curviness >= m_MediumCurviness || speedLimit <= m_MediumSpeedLimit || length <= m_MediumBlockLength)
-                    ? SignalSpeed.Medium
-                    : SignalSpeed.Normal;
+                // A buffer signal has an empty block, so nothing above would mark it interlocked,
+                // but it is permanently at danger and must not wear an automatic's plate.
+                site.m_Class = interlocked || site.m_AtBuffers ? SignalClass.Home : SignalClass.Automatic;
+                site.m_HasClearRoute = HasRoute(ref network, i, mediumAllowed: true);
+                site.m_HasNormalRoute = site.m_HasClearRoute && HasRoute(ref network, i, mediumAllowed: false);
                 network.m_Sites[i] = site;
             }
+        }
 
+        /// <summary>
+        /// True when this lane's geometry is what medium speed is for: a sharp curve, slow posted
+        /// track, or the cramped pointwork of a junction throat or yard.
+        /// </summary>
+        private bool IsMedium(Entity lane)
+        {
+            if (!m_Graph.m_TrackLaneData.TryGetComponent(lane, out var trackLane))
+            {
+                return false;
+            }
+            return trackLane.m_Curviness >= m_MediumCurviness
+                || trackLane.m_SpeedLimit <= m_MediumSpeedLimit
+                || m_Graph.GetLength(lane) <= m_MediumBlockLength;
+        }
+
+        /// <summary>
+        /// True when travel over this lane runs out of track. The game's own end-of-lane flag says
+        /// no other track lane touches this end, which a bare successor count does not: that also
+        /// comes back empty for a one-way lane facing the other way and at a boundary with a track
+        /// type this mod does not signal, neither of which is a buffer stop.
+        /// </summary>
+        private bool RunsIntoBuffers(DirectedLane approach, ref NativeList<DirectedLane> scratch)
+        {
+            if (!m_Graph.m_TrackLaneData.TryGetComponent(approach.m_Lane, out var trackLane))
+            {
+                return false;
+            }
+            TrackLaneFlags ending = approach.m_Forward ? TrackLaneFlags.EndingLane : TrackLaneFlags.StartingLane;
+            if ((trackLane.m_Flags & ending) == 0)
+            {
+                return false;
+            }
+            scratch.Clear();
+            m_Graph.GetSuccessors(approach, ref scratch);
+            return scratch.Length == 0;
+        }
+
+        /// <summary>
+        /// Whether any road from this signal reaches another signal, optionally refusing to cross
+        /// medium speed track on the way. Reachability is enough because there are only two speeds:
+        /// a road that never touches a medium lane is a normal speed road.
+        /// </summary>
+        private bool HasRoute(ref SignalNetwork network, int siteIndex, bool mediumAllowed)
+        {
+            var frontier = new NativeList<DirectedLane>(16, Allocator.Temp);
+            var visited = new NativeParallelHashSet<DirectedLane>(64, Allocator.Temp);
+            var scratch = new NativeList<DirectedLane>(8, Allocator.Temp);
+            bool found = false;
+
+            m_Graph.GetSuccessors(network.m_Sites[siteIndex].m_Approach, ref frontier);
+            while (frontier.Length > 0 && !found && visited.Count() < kMaxBlockLanes)
+            {
+                DirectedLane lane = frontier[frontier.Length - 1];
+                frontier.RemoveAt(frontier.Length - 1);
+                if (!visited.Add(lane) || (!mediumAllowed && network.m_MediumLanes.Contains(lane.m_Lane)))
+                {
+                    continue;
+                }
+                if (network.m_SiteByApproach.ContainsKey(lane))
+                {
+                    found = true;
+                    break;
+                }
+                scratch.Clear();
+                m_Graph.GetSuccessors(lane, ref scratch);
+                for (int i = 0; i < scratch.Length; i++)
+                {
+                    frontier.Add(scratch[i]);
+                }
+            }
+
+            frontier.Dispose();
+            visited.Dispose();
+            scratch.Dispose();
+            return found;
         }
 
         private bool IsPlatform(Entity lane)
@@ -486,7 +577,7 @@ namespace RailwaySignals.Signalling
 
             for (int i = 0; i < network.m_Sites.Length; i++)
             {
-                if (taken[i])
+                if (taken[i] || network.m_Sites[i].m_AtBuffers)
                 {
                     continue;
                 }
@@ -530,6 +621,10 @@ namespace RailwaySignals.Signalling
                         continue;
                     }
                     SignalSiteData candidate = network.m_Sites[i];
+                    if (candidate.m_AtBuffers)
+                    {
+                        continue;
+                    }
                     if (math.dot(from.m_Direction, candidate.m_Direction) < kParallelDot)
                     {
                         continue;

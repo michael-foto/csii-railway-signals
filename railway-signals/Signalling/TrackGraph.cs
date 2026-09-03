@@ -120,8 +120,9 @@ namespace RailwaySignals.Signalling
             }
             PathNode boundary = (lane.m_Forward == exit) ? laneData.m_EndNode : laneData.m_StartNode;
             Entity searchOwner = GetExitOwner(exit ? lane : lane.Reversed);
+            float3 travel = TravelDirection(lane, exit ? lane.ExitPosition : lane.EntryPosition);
 
-            CollectFrom(searchOwner, lane.m_Lane, boundary, exit, ref results);
+            CollectFrom(searchOwner, lane.m_Lane, boundary, exit, travel, ref results);
 
             // A node connector lane, or an edge lane ending on a node, continues into the lanes of
             // the edges meeting there. A lane ending mid-edge has no ConnectedEdge buffer.
@@ -132,13 +133,13 @@ namespace RailwaySignals.Signalling
                     Entity edge = connectedEdges[i].m_Edge;
                     if (edge != owner.m_Owner)
                     {
-                        CollectFrom(edge, lane.m_Lane, boundary, exit, ref results);
+                        CollectFrom(edge, lane.m_Lane, boundary, exit, travel, ref results);
                     }
                 }
             }
         }
 
-        private void CollectFrom(Entity netEntity, Entity excludeLane, PathNode boundary, bool exit, ref NativeList<DirectedLane> results)
+        private void CollectFrom(Entity netEntity, Entity excludeLane, PathNode boundary, bool exit, float3 travel, ref NativeList<DirectedLane> results)
         {
             if (!m_SubLanes.TryGetBuffer(netEntity, out var subLanes))
             {
@@ -156,18 +157,29 @@ namespace RailwaySignals.Signalling
                 // node; travelling backwards means leaving it at its end node.
                 if (candidate.m_StartNode.Equals(boundary))
                 {
-                    Add(new DirectedLane(subLane, exit), ref results);
+                    Add(new DirectedLane(subLane, exit), exit, travel, ref results);
                 }
                 else if (candidate.m_EndNode.Equals(boundary))
                 {
-                    Add(new DirectedLane(subLane, !exit), ref results);
+                    Add(new DirectedLane(subLane, !exit), exit, travel, ref results);
                 }
             }
         }
 
-        private void Add(DirectedLane lane, ref NativeList<DirectedLane> results)
+        /// <summary>Unit vector of travel over the lane at a point along its curve.</summary>
+        private float3 TravelDirection(DirectedLane lane, float curvePosition)
         {
-            if (!CanTravel(lane))
+            if (!m_CurveData.TryGetComponent(lane.m_Lane, out var curve))
+            {
+                return float3.zero;
+            }
+            float3 tangent = math.normalizesafe(MathUtils.Tangent(curve.m_Bezier, curvePosition), float3.zero);
+            return lane.m_Forward ? tangent : -tangent;
+        }
+
+        private void Add(DirectedLane lane, bool exit, float3 travel, ref NativeList<DirectedLane> results)
+        {
+            if (!CanTravel(lane) || IsReversal(lane, exit, travel))
             {
                 return;
             }
@@ -179,6 +191,23 @@ namespace RailwaySignals.Signalling
                 }
             }
             results.Add(lane);
+        }
+
+        /// <summary>
+        /// True when taking this lane next would mean travel turning back on itself, which a train
+        /// can only do by reversing. Two lanes ending on the same node connect in the lane graph
+        /// even when they form a V, so at a terminal throat the graph offers a road out of one
+        /// platform and straight back into another. Nothing runs that way without being booked to,
+        /// so the plan leaves such roads out and reads them only off a train's own path.
+        /// </summary>
+        private bool IsReversal(DirectedLane lane, bool exit, float3 travel)
+        {
+            if (math.all(travel == float3.zero))
+            {
+                return false;
+            }
+            float3 onward = TravelDirection(lane, exit ? lane.EntryPosition : lane.ExitPosition);
+            return !math.all(onward == float3.zero) && math.dot(travel, onward) < 0f;
         }
     }
 }
