@@ -37,6 +37,35 @@ namespace RailwaySignals.Systems
             public SignalSpeed m_Speed;
         }
 
+        /// <summary>
+        /// Priority written onto a lane to hold a train short of it. Any non-zero value satisfies
+        /// TrainNavigationSystem.CanReserveLane, which is what actually stops the train, so this is
+        /// the lowest value that stays below every other reader: traffic lights count a lane as
+        /// occupied from 100, pedestrians give way from 108, and cars halve their speed at exactly
+        /// 102. Writing 100 or more would hold level crossing barriers shut.
+        /// </summary>
+        private const byte kHoldPriority = 99;
+
+        /// <summary>
+        /// Presents a site's successors to the rules without copying them out of the plan.
+        /// </summary>
+        private readonly struct SuccessorView : ISignalStates
+        {
+            private readonly SignalNetwork m_Network;
+
+            private readonly int2 m_Range;
+
+            public SuccessorView(in SignalNetwork network, int2 range)
+            {
+                m_Network = network;
+                m_Range = range;
+            }
+
+            public int Length => m_Range.y;
+
+            public SignalState this[int index] => State(m_Network.m_Sites[m_Network.m_Successors[m_Range.x + index]]);
+        }
+
         private SignalNetworkSystem m_NetworkSystem;
 
         private EntityQuery m_TrainQuery;
@@ -48,6 +77,8 @@ namespace RailwaySignals.Systems
         private ComponentLookup<TrafficLight> m_TrafficLightData;
 
         private ComponentLookup<RailwaySignal> m_RailwaySignalData;
+
+        private ComponentLookup<LaneReservation> m_LaneReservationData;
 
         private BufferLookup<LaneObject> m_LaneObjects;
 
@@ -62,6 +93,16 @@ namespace RailwaySignals.Systems
         private BufferLookup<PathElement> m_PathElements;
 
         private ComponentLookup<PathOwner> m_PathOwnerData;
+
+        /// <summary>
+        /// Lanes a train has a road booked over, mapped to the site that admits it into them.
+        /// First writer wins, which is how two trains wanting the same section are arbitrated: the
+        /// one whose booking landed first keeps its road and the other's signal stays at danger.
+        /// </summary>
+        private NativeParallelHashMap<Entity, int> m_BookedBy;
+
+        /// <summary>How many consecutive passes each signal has been holding a train, by site index.</summary>
+        private NativeParallelHashMap<int, int> m_HoldPasses;
 
         /// <summary>The road set over each signal, keyed by site index. Absent means no route is set.</summary>
         private NativeParallelHashMap<int, RouteData> m_RouteBySite;
@@ -81,6 +122,7 @@ namespace RailwaySignals.Systems
             m_TrainData = GetComponentLookup<Train>(isReadOnly: true);
             m_TrafficLightData = GetComponentLookup<TrafficLight>(isReadOnly: false);
             m_RailwaySignalData = GetComponentLookup<RailwaySignal>(isReadOnly: false);
+            m_LaneReservationData = GetComponentLookup<LaneReservation>(isReadOnly: false);
             m_LaneObjects = GetBufferLookup<LaneObject>(isReadOnly: true);
             m_LaneOverlaps = GetBufferLookup<LaneOverlap>(isReadOnly: true);
             m_NavigationLanes = GetBufferLookup<TrainNavigationLane>(isReadOnly: true);
@@ -89,11 +131,15 @@ namespace RailwaySignals.Systems
             m_PathElements = GetBufferLookup<PathElement>(isReadOnly: true);
             m_PathOwnerData = GetComponentLookup<PathOwner>(isReadOnly: true);
             m_RouteBySite = new NativeParallelHashMap<int, RouteData>(64, Allocator.Persistent);
+            m_HoldPasses = new NativeParallelHashMap<int, int>(64, Allocator.Persistent);
+            m_BookedBy = new NativeParallelHashMap<Entity, int>(256, Allocator.Persistent);
         }
 
         protected override void OnDestroy()
         {
             m_RouteBySite.Dispose();
+            m_HoldPasses.Dispose();
+            m_BookedBy.Dispose();
             base.OnDestroy();
         }
 
@@ -110,6 +156,7 @@ namespace RailwaySignals.Systems
             m_TrainData.Update(this);
             m_TrafficLightData.Update(this);
             m_RailwaySignalData.Update(this);
+            m_LaneReservationData.Update(this);
             m_LaneObjects.Update(this);
             m_LaneOverlaps.Update(this);
             m_NavigationLanes.Update(this);
@@ -121,6 +168,7 @@ namespace RailwaySignals.Systems
             FindSetRoutes(ref network);
             FindBlockedSignals(ref network);
             ApplyAspects(ref network);
+            HoldTrainsAtStop(ref network);
         }
 
         /// <summary>
@@ -140,6 +188,7 @@ namespace RailwaySignals.Systems
         private void FindSetRoutes(ref SignalNetwork network)
         {
             m_RouteBySite.Clear();
+            m_BookedBy.Clear();
             NativeArray<Entity> trains = m_TrainQuery.ToEntityArray(Allocator.Temp);
             var road = new NativeList<DirectedLane>(32, Allocator.Temp);
 
@@ -168,6 +217,9 @@ namespace RailwaySignals.Systems
                     {
                         route.m_Speed = SignalSpeed.Medium;
                     }
+                    // Booked to the signal that admits the train here, so that signal is not held
+                    // by its own train while every other signal reading over this lane is.
+                    m_BookedBy.TryAdd(lane.m_Lane, siteIndex);
                     if (isSite)
                     {
                         route.m_Successor = site;
@@ -256,7 +308,7 @@ namespace RailwaySignals.Systems
                 for (int j = range.x; j < range.x + range.y && !blocked; j++)
                 {
                     Entity lane = network.m_BlockLanes[j].m_Lane;
-                    blocked = IsLaneBusy(lane);
+                    blocked = IsLaneClaimed(lane, i);
                     if (blocked || !m_LaneOverlaps.TryGetBuffer(lane, out DynamicBuffer<LaneOverlap> overlaps))
                     {
                         continue;
@@ -268,7 +320,7 @@ namespace RailwaySignals.Systems
                         LaneOverlap overlap = overlaps[k];
                         if ((overlap.m_Flags & merges) == 0 && m_TrackLaneData.HasComponent(overlap.m_Other))
                         {
-                            blocked = IsLaneBusy(overlap.m_Other);
+                            blocked = IsLaneClaimed(overlap.m_Other, i);
                         }
                     }
                 }
@@ -276,6 +328,30 @@ namespace RailwaySignals.Systems
                 site.m_Blocked = blocked;
                 network.m_Sites[i] = site;
             }
+        }
+
+        /// <summary>
+        /// True when this signal may not offer the lane: a train stands in it, or another signal has
+        /// a road booked over it. Booking is what makes the approaches to a junction go to danger as
+        /// soon as a train is signalled through it, rather than only once it arrives.
+        /// </summary>
+        private bool IsLaneClaimed(Entity lane, int siteIndex)
+        {
+            bool booked = m_BookedBy.TryGetValue(lane, out int bookedBy);
+            return SignalRules.Claimed(IsLaneBusy(lane), booked, bookedBy, siteIndex);
+        }
+
+        /// <summary>The slice of a site the rules read.</summary>
+        private static SignalState State(in SignalSiteData site)
+        {
+            return new SignalState(site.m_Blocked, site.m_HasClearRoute, site.m_HasNormalRoute, site.m_Speed);
+        }
+
+        private RouteState Route(int siteIndex)
+        {
+            return m_RouteBySite.TryGetValue(siteIndex, out RouteData route)
+                ? new RouteState(route.m_Successor, route.m_Speed)
+                : RouteState.None;
         }
 
         /// <summary>
@@ -307,9 +383,7 @@ namespace RailwaySignals.Systems
             for (int i = 0; i < network.m_Sites.Length; i++)
             {
                 SignalSiteData site = network.m_Sites[i];
-                site.m_Speed = m_RouteBySite.TryGetValue(i, out RouteData set)
-                    ? set.m_Speed
-                    : (site.m_HasNormalRoute ? SignalSpeed.Normal : SignalSpeed.Medium);
+                site.m_Speed = SignalRules.Speed(State(site), Route(i));
                 network.m_Sites[i] = site;
             }
             for (int i = 0; i < network.m_Sites.Length; i++)
@@ -326,6 +400,83 @@ namespace RailwaySignals.Systems
                     signal.m_Aspect = site.m_Aspect;
                     m_RailwaySignalData[site.m_Signal] = signal;
                 }
+            }
+        }
+
+        /// <summary>
+        /// Holds a train short of a signal whose block another train stands in, by reserving the
+        /// lanes travel enters that block by. TrainNavigationSystem.CanReserveLane refuses a lane
+        /// carrying any reservation that is not the train's own, which truncates its reservation
+        /// chain and brings it to a stand about ten metres short.
+        /// <para>
+        /// Only <c>m_Blocked</c> is enforced, never a signal with no road at all: the one at a
+        /// buffer stop is at danger for good, and holding trains for it would put every terminal
+        /// platform, siding and depot road out of reach.
+        /// </para>
+        /// <para>
+        /// The entry lanes are reserved, never the whole block, or the train already inside it
+        /// would be stopped along with the one waiting outside; CanReserveLane excuses a train only
+        /// for the lanes its own bogies are standing on, not the ones in front of it.
+        /// </para>
+        /// <para>
+        /// m_Blocker is deliberately left unset. TrainLaneSpeedIterator copies it into the train's
+        /// Blocker component, and StuckMovingObjectSystem passes over a train whose blocker is
+        /// null, which keeps a hold of ours out of the chain walk that ends in the game deleting
+        /// the train. Liveness is this pass's own responsibility instead, through the release
+        /// count below.
+        /// </para>
+        /// </summary>
+        private void HoldTrainsAtStop(ref SignalNetwork network)
+        {
+            if (!Mod.setting.holdTrainsAtSignals)
+            {
+                if (!m_HoldPasses.IsEmpty)
+                {
+                    // Nothing to undo: a reservation lapses on its own within a couple of cycles.
+                    m_HoldPasses.Clear();
+                }
+                return;
+            }
+            int releasePasses = math.max(1, Mod.setting.holdReleaseSeconds * 60 / GetUpdateInterval(SystemUpdatePhase.GameSimulation));
+
+            for (int i = 0; i < network.m_Sites.Length; i++)
+            {
+                if (!network.m_Sites[i].m_Blocked)
+                {
+                    m_HoldPasses.Remove(i);
+                    continue;
+                }
+                m_HoldPasses.TryGetValue(i, out int passes);
+                m_HoldPasses[i] = passes + 1;
+
+                int2 range = network.m_EntryRanges[i];
+                for (int j = range.x; j < range.x + range.y; j++)
+                {
+                    Entity lane = network.m_EntryLanes[j];
+                    bool bookedElsewhere = m_BookedBy.TryGetValue(lane, out int bookedBy) && bookedBy != i;
+                    if (SignalRules.ShouldHoldLane(enforcing: true, blocked: true, passes, releasePasses, bookedElsewhere))
+                    {
+                        Reserve(lane);
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Claims a lane at the holding priority. The game only ever raises a reservation, never
+        /// lowers one, so writing the same claim every pass is harmless and cannot undo a claim a
+        /// train has made for itself.
+        /// </summary>
+        private void Reserve(Entity lane)
+        {
+            if (!m_LaneReservationData.HasComponent(lane))
+            {
+                return;
+            }
+            ref LaneReservation reservation = ref m_LaneReservationData.GetRefRW(lane).ValueRW;
+            if (kHoldPriority > reservation.m_Next.m_Priority)
+            {
+                reservation.m_Next.m_Priority = kHoldPriority;
             }
         }
 
@@ -363,89 +514,17 @@ namespace RailwaySignals.Systems
         }
 
         /// <summary>
-        /// What a signal shows, given the road set over it. Speed follows the road a train is
-        /// actually booked over rather than the worst road out of the block, so points into a slow
-        /// siding no longer pull a train down when it is routed straight on.
-        /// <para>
-        /// With no road set there is nothing to price. A home signal protects pointwork or buffers
-        /// and stays at danger until a route is set over it, the way an interlocked signal does. An
-        /// automatic only divides plain line and has no route to wait for, so it keeps showing a
-        /// road: the least restrictive one out of the block, which is the fast road at a junction.
-        /// Occupancy stays worst case in both cases, because a signal must not clear over track
-        /// something else is standing in whichever way the points happen to lie.
-        /// </para>
+        /// Resolves what a signal shows, deferring the decision itself to
+        /// <see cref="SignalRules"/> so it can be exercised without the game running.
         /// </summary>
-        /// <summary>
-        /// Whether a signal is at danger for a reason of its own, without regard to what lies beyond
-        /// it. Read both for the signal being resolved and for the one ahead of it, so a caution is
-        /// shown for a home signal held at stop by having no route set and not just for one with
-        /// something standing in its block.
-        /// </summary>
-        private bool IsAtStop(SignalSiteData site)
-        {
-            return site.m_Blocked || !site.m_HasClearRoute;
-        }
-
-        /// <summary>
-        /// Reads every road out of the block for a signal with no train booked over it, worst case:
-        /// any one of them shut brings this signal to caution, because a following train has no
-        /// guarantee of being turned down a clear branch at the junction ahead. False means a
-        /// warning is called for.
-        /// <para>
-        /// A signal at a buffer stop counts like any other, which is what puts the signal before a
-        /// terminal platform or a siding at caution. Roads that only exist by turning travel back on
-        /// itself are already absent, filtered out of the lane graph by TrackGraph, so a departure
-        /// signal is not held down by the buffers of the platform alongside it.
-        /// </para>
-        /// </summary>
-        private bool LookAhead(ref SignalNetwork network, int siteIndex, out bool mediumAhead)
-        {
-            mediumAhead = false;
-            int2 range = network.m_SuccessorRanges[siteIndex];
-            for (int i = range.x; i < range.x + range.y; i++)
-            {
-                SignalSiteData successor = network.m_Sites[network.m_Successors[i]];
-                if (IsAtStop(successor))
-                {
-                    return false;
-                }
-                mediumAhead |= successor.m_Speed == SignalSpeed.Medium;
-            }
-            return true;
-        }
-
         private SignalAspect ResolveAspect(ref SignalNetwork network, int siteIndex, SignalSiteData site)
         {
-            if (IsAtStop(site))
-            {
-                return SignalAspect.Stop;
-            }
-
-            bool medium = site.m_Speed == SignalSpeed.Medium;
-            bool mediumAhead;
-
-            // A route with a successor is the only case where the signal ahead is known. A train
-            // booked no further than this block, which is every train terminating at a platform,
-            // says nothing about the road beyond the signal, so it falls back with the rest.
-            if (m_RouteBySite.TryGetValue(siteIndex, out RouteData route) && route.m_Successor >= 0)
-            {
-                SignalSiteData ahead = network.m_Sites[route.m_Successor];
-                if (IsAtStop(ahead))
-                {
-                    return medium ? SignalAspect.MediumCaution : SignalAspect.Caution;
-                }
-                mediumAhead = ahead.m_Speed == SignalSpeed.Medium;
-            }
-            else if (!LookAhead(ref network, siteIndex, out mediumAhead))
-            {
-                return medium ? SignalAspect.MediumCaution : SignalAspect.Caution;
-            }
-
-            if (medium)
-            {
-                return SignalAspect.MediumClear;
-            }
-            return mediumAhead ? SignalAspect.ReduceToMedium : SignalAspect.Clear;
+            RouteState route = Route(siteIndex);
+            SignalState ahead = route.m_IsSet && route.m_Successor >= 0
+                ? State(network.m_Sites[route.m_Successor])
+                : default;
+            var successors = new SuccessorView(network, network.m_SuccessorRanges[siteIndex]);
+            return SignalRules.Aspect(State(site), route, ahead, successors);
         }
     }
 }

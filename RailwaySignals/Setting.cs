@@ -36,6 +36,19 @@ namespace RailwaySignals
         [SettingsUISection(kSection, kGeneralGroup)]
         public bool signalSubwayTracks { get; set; }
 
+        /// <summary>
+        /// Whether a stop aspect actually holds a train, rather than only being displayed. Off by
+        /// default: it changes how the railway runs and it can deadlock on track a real railway's
+        /// signalling would never have been built over.
+        /// </summary>
+        [SettingsUISection(kSection, kGeneralGroup)]
+        public bool holdTrainsAtSignals { get; set; }
+
+        /// <summary>How long a train may be held at one signal before it is let go, in seconds.</summary>
+        [SettingsUISlider(min = 5, max = 300, step = 5, unit = Unit.kInteger)]
+        [SettingsUISection(kSection, kGeneralGroup)]
+        public int holdReleaseSeconds { get; set; }
+
         /// <summary>Target length of an automatic block on plain line, in metres. Zero places none.</summary>
         [SettingsUISlider(min = 0, max = 2000, step = 50, unit = Unit.kLength)]
         [SettingsUISection(kSection, kBlockGroup)]
@@ -150,6 +163,8 @@ namespace RailwaySignals
         {
             enableSignals = true;
             signalSubwayTracks = true;
+            holdTrainsAtSignals = false;
+            holdReleaseSeconds = 30;
             intermediateBlockSpacing = 400;
             intermediateOnBidirectionalTrack = true;
             mediumSpeedCurveRadius = 300;

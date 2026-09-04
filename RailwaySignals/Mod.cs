@@ -30,7 +30,9 @@ namespace RailwaySignals
 
             updateSystem.UpdateAt<SignalPrefabSystem>(SystemUpdatePhase.PrefabUpdate);
             updateSystem.UpdateAt<SignalNetworkSystem>(SystemUpdatePhase.ModificationEnd);
-            updateSystem.UpdateAt<SignalAspectSystem>(SystemUpdatePhase.GameSimulation);
+            // Before TrainNavigationSystem: holding a train works by claiming lanes it is about to
+            // reserve, so the claim has to be in place by the time it looks.
+            updateSystem.UpdateBefore<SignalAspectSystem, Game.Simulation.TrainNavigationSystem>(SystemUpdatePhase.GameSimulation);
             // The editor never ticks GameSimulation, so without this the aspects never update there.
             updateSystem.UpdateAt<SignalAspectSystem>(SystemUpdatePhase.EditorSimulation);
             // Hides the signal objects from SerializerSystem, which sits between these two.

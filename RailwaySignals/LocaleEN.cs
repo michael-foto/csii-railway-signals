@@ -31,6 +31,12 @@ namespace RailwaySignals
                 { m_Setting.GetOptionLabelLocaleID(nameof(Setting.signalSubwayTracks)), "Signal subway track" },
                 { m_Setting.GetOptionDescLocaleID(nameof(Setting.signalSubwayTracks)), "Also place signals on subway track. Most of it is underground and out of sight." },
 
+                { m_Setting.GetOptionLabelLocaleID(nameof(Setting.holdTrainsAtSignals)), "Trains obey stop signals" },
+                { m_Setting.GetOptionDescLocaleID(nameof(Setting.holdTrainsAtSignals)), "Hold a train at a signal showing stop, instead of only displaying the aspect. Only a block occupied by another train holds a train: a signal at a buffer stop stays at danger for good, so enforcing that one would make every terminal platform, siding and depot road unreachable. Turning this off releases any train being held within about half a second." },
+
+                { m_Setting.GetOptionLabelLocaleID(nameof(Setting.holdReleaseSeconds)), "Release a held train after" },
+                { m_Setting.GetOptionDescLocaleID(nameof(Setting.holdReleaseSeconds)), "How long one signal may hold a train before letting it go anyway, in seconds. Absolute block on track laid without signalling in mind can bring two trains to a stand waiting on each other, and the game's own answer to a deadlocked train is to delete it, so a held train always has to be released eventually." },
+
                 { m_Setting.GetOptionLabelLocaleID(nameof(Setting.intermediateBlockSpacing)), "Block length" },
                 { m_Setting.GetOptionDescLocaleID(nameof(Setting.intermediateBlockSpacing)), "How long a stretch of plain line runs before an automatic signal divides it. Junctions and platform ends are always signalled regardless. Set to zero to signal junctions and platforms only." },
 

@@ -113,6 +113,14 @@ namespace RailwaySignals.Signalling
 
         public NativeList<int2> m_BlockRanges;
 
+        /// <summary>
+        /// Lanes travel enters each block by, indexed through <see cref="m_EntryRanges"/>. These are
+        /// the lanes a signal stands in front of, as opposed to the whole block behind it.
+        /// </summary>
+        public NativeList<Entity> m_EntryLanes;
+
+        public NativeList<int2> m_EntryRanges;
+
         /// <summary>Site indices of the signals ending each block, through <see cref="m_SuccessorRanges"/>.</summary>
         public NativeList<int> m_Successors;
 
@@ -138,6 +146,8 @@ namespace RailwaySignals.Signalling
                 m_Sites = new NativeList<SignalSiteData>(256, allocator),
                 m_BlockLanes = new NativeList<DirectedLane>(2048, allocator),
                 m_BlockRanges = new NativeList<int2>(256, allocator),
+                m_EntryLanes = new NativeList<Entity>(512, allocator),
+                m_EntryRanges = new NativeList<int2>(256, allocator),
                 m_Successors = new NativeList<int>(512, allocator),
                 m_SuccessorRanges = new NativeList<int2>(256, allocator),
                 m_SiteByApproach = new NativeParallelHashMap<DirectedLane, int>(256, allocator),
@@ -152,6 +162,8 @@ namespace RailwaySignals.Signalling
             m_Sites.Clear();
             m_BlockLanes.Clear();
             m_BlockRanges.Clear();
+            m_EntryLanes.Clear();
+            m_EntryRanges.Clear();
             m_Successors.Clear();
             m_SuccessorRanges.Clear();
             m_SiteByApproach.Clear();
@@ -168,6 +180,8 @@ namespace RailwaySignals.Signalling
             m_Sites.Dispose();
             m_BlockLanes.Dispose();
             m_BlockRanges.Dispose();
+            m_EntryLanes.Dispose();
+            m_EntryRanges.Dispose();
             m_Successors.Dispose();
             m_SuccessorRanges.Dispose();
             m_SiteByApproach.Dispose();

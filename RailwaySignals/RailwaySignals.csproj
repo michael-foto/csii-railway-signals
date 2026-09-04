@@ -1,6 +1,13 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
+		<!--
+		  Pinned, not derived from the project file name. Three things are keyed to this exact
+		  string: the $type assembly reference in every Assets/**.Prefab, the toolchain's
+		  DeployDir ($(LocalModsPath)\$(TargetName)), and the PDX publish configuration.
+		  Renaming it stops the prefab tag component deserialising and orphans the installed mod.
+		-->
+		<AssemblyName>railway-signals</AssemblyName>
 		<Configurations>Debug;Release</Configurations>
 	
 		<!--The file where mod information which is required for publishing mod on PDX mods are stored-->
@@ -164,7 +171,13 @@
 	  the whole user data folder recursively, and LoadPrefabs registers every PrefabAsset it finds
 	  there, so assets dropped into the deployed mod folder are picked up with no code to load them.
 	-->
-	<Target Name="DeployModAssets" AfterTargets="DeployWIP" Condition="'$(NeedBuild)'">
+	<!--
+	  Off by default. The game loads the imported assets from ImportedData already, so a copy in
+	  the mod folder registers every prefab a second time (Duplicate prefab ID) and, worse, holds
+	  the .Geometry files open so a re-import cannot overwrite them. Build with -p:DeployAssets=true
+	  only when packaging for PDX mods.
+	-->
+	<Target Name="DeployModAssets" AfterTargets="DeployWIP" Condition="'$(NeedBuild)' And '$(DeployAssets)' == 'true'">
 		<ItemGroup>
 			<ModAsset Include="Assets\**\*" Exclude="Assets\**\*.md" />
 		</ItemGroup>

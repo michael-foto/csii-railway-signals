@@ -395,6 +395,17 @@ namespace RailwaySignals.Signalling
                 visited.Clear();
 
                 m_Graph.GetSuccessors(network.m_Sites[i].m_Approach, ref frontier);
+
+                // The lanes travel enters the block by, kept apart from the block itself: a signal
+                // is imposed on these, never on the whole block, or a train already inside it
+                // would be stopped along with the one waiting outside.
+                int entryStart = network.m_EntryLanes.Length;
+                for (int j = 0; j < frontier.Length; j++)
+                {
+                    network.m_EntryLanes.Add(frontier[j].m_Lane);
+                }
+                network.m_EntryRanges.Add(new int2(entryStart, network.m_EntryLanes.Length - entryStart));
+
                 while (frontier.Length > 0 && network.m_BlockLanes.Length - laneStart < kMaxBlockLanes)
                 {
                     DirectedLane lane = frontier[frontier.Length - 1];
