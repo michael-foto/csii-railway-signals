@@ -93,46 +93,55 @@ namespace RailwaySignals
         /// <summary>Offsets the fixed setback of a signal from its block boundary, in metres.</summary>
         [SettingsUISlider(min = -10f, max = 10f, step = 0.25f, unit = Unit.kLength, scalarMultiplier = 1f)]
         [SettingsUISection(kSection, kAdvancedGroup)]
+        [SettingsUIAdvanced]
         public float adjustSetback { get; set; }
 
         /// <summary>Offsets how far a lineside post stands from the track centre, in metres.</summary>
         [SettingsUISlider(min = -3f, max = 3f, step = 0.05f, unit = Unit.kLength, scalarMultiplier = 1f)]
         [SettingsUISection(kSection, kAdvancedGroup)]
+        [SettingsUIAdvanced]
         public float adjustLateral { get; set; }
 
         /// <summary>Raises or lowers every part of every signal, in metres.</summary>
         [SettingsUISlider(min = -2f, max = 2f, step = 0.05f, unit = Unit.kLength, scalarMultiplier = 1f)]
         [SettingsUISection(kSection, kAdvancedGroup)]
+        [SettingsUIAdvanced]
         public float adjustHeight { get; set; }
 
         /// <summary>Offsets the gap between the two heads of a signal, in metres.</summary>
         [SettingsUISlider(min = -1f, max = 1f, step = 0.05f, unit = Unit.kLength, scalarMultiplier = 1f)]
         [SettingsUISection(kSection, kAdvancedGroup)]
+        [SettingsUIAdvanced]
         public float adjustHeadSpacing { get; set; }
 
         /// <summary>Offsets how far a bridge extends beyond the tracks it spans, in metres.</summary>
         [SettingsUISlider(min = -6f, max = 6f, step = 0.25f, unit = Unit.kLength, scalarMultiplier = 1f)]
         [SettingsUISection(kSection, kAdvancedGroup)]
+        [SettingsUIAdvanced]
         public float adjustGantryMargin { get; set; }
 
         /// <summary>Offsets how far off its track centre a bridge-carried signal sits, in metres.</summary>
         [SettingsUISlider(min = -3f, max = 3f, step = 0.05f, unit = Unit.kLength, scalarMultiplier = 1f)]
         [SettingsUISection(kSection, kAdvancedGroup)]
+        [SettingsUIAdvanced]
         public float adjustGantryLateral { get; set; }
 
         /// <summary>Offsets the height of a bridge-carried head above rail level, in metres.</summary>
         [SettingsUISlider(min = -3f, max = 3f, step = 0.05f, unit = Unit.kLength, scalarMultiplier = 1f)]
         [SettingsUISection(kSection, kAdvancedGroup)]
+        [SettingsUIAdvanced]
         public float adjustGantryHeadHeight { get; set; }
 
         /// <summary>Offsets a bridge-carried head from its cage across the track, in metres.</summary>
         [SettingsUISlider(min = -2f, max = 2f, step = 0.05f, unit = Unit.kLength, scalarMultiplier = 1f)]
         [SettingsUISection(kSection, kAdvancedGroup)]
+        [SettingsUIAdvanced]
         public float adjustGantryHeadSide { get; set; }
 
         /// <summary>Offsets a bridge-carried head from its cage along the track, in metres.</summary>
         [SettingsUISlider(min = -2f, max = 2f, step = 0.05f, unit = Unit.kLength, scalarMultiplier = 1f)]
         [SettingsUISection(kSection, kAdvancedGroup)]
+        [SettingsUIAdvanced]
         public float adjustGantryHeadForward { get; set; }
 
         [SettingsUIButton]
@@ -143,19 +152,6 @@ namespace RailwaySignals
             {
                 World.DefaultGameObjectInjectionWorld?.GetExistingSystemManaged<SignalPrefabSystem>()?.Invalidate();
                 World.DefaultGameObjectInjectionWorld?.GetExistingSystemManaged<SignalNetworkSystem>()?.Invalidate();
-            }
-        }
-
-        public TrackTypes signalledTrackTypes
-        {
-            get
-            {
-                TrackTypes types = TrackTypes.Train;
-                if (signalSubwayTracks)
-                {
-                    types |= TrackTypes.Subway;
-                }
-                return types;
             }
         }
 

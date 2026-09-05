@@ -28,8 +28,8 @@
                 }
             },
             {
-                "$id": 5,
-                "$type": "7|Game.Prefabs.StackProperties, Game",
+                "$id": 4,
+                "$type": "4|Game.Prefabs.StackProperties, Game",
                 "name": "StackProperties",
                 "active": true,
                 "m_Direction": 1,
@@ -42,23 +42,23 @@
     },
     "m_GeometryAsset": $fstrref:"CID:efb99cac94b10f0f6e617ad364ebc9f9",
     "m_SurfaceAssets": {
-        "$id": 4,
-        "$type": "4|Colossal.IO.AssetDatabase.AssetReference`1[[Colossal.IO.AssetDatabase.SurfaceAsset, Colossal.IO.AssetDatabase, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]][], Colossal.IO.AssetDatabase",
+        "$id": 5,
+        "$type": "5|Colossal.IO.AssetDatabase.AssetReference`1[[Colossal.IO.AssetDatabase.SurfaceAsset, Colossal.IO.AssetDatabase, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null]][], Colossal.IO.AssetDatabase",
         "$rlength": 1,
         "$rcontent": [
             $fstrref:"CID:9748a4203ae3fc66b93c17093151b26d"
         ]
     },
     "m_Bounds": {
-        "$type": "5|Colossal.Mathematics.Bounds3, Colossal.Mathematics",
+        "$type": "6|Colossal.Mathematics.Bounds3, Colossal.Mathematics",
         "min": {
-            "$type": "6|Unity.Mathematics.float3, Unity.Mathematics",
+            "$type": "7|Unity.Mathematics.float3, Unity.Mathematics",
             "x": -5.22000027,
             "y": 0,
             "z": -0.552
         },
         "max": {
-            "$type": 6,
+            "$type": 7,
             "x": -2.88,
             "y": 7.43666267,
             "z": 0.3

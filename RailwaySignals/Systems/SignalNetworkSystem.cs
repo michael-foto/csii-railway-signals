@@ -251,7 +251,7 @@ namespace RailwaySignals.Systems
                 m_PrefabTrackLaneData = GetComponentLookup<TrackLaneData>(isReadOnly: true),
                 m_ConnectedEdges = GetBufferLookup<Game.Net.ConnectedEdge>(isReadOnly: true),
                 m_SubLanes = GetBufferLookup<Game.Net.SubLane>(isReadOnly: true),
-                m_TrackTypes = Mod.setting.signalledTrackTypes
+                m_TrackTypes = SignalledTrackTypes,
             };
 
             NativeArray<Entity> all = m_TrackLaneQuery.ToEntityArray(Allocator.Temp);
@@ -638,6 +638,19 @@ namespace RailwaySignals.Systems
                     m_Speed = site.m_Speed,
                     m_Aspect = SignalAspect.Stop
                 });
+            }
+        }
+
+        public TrackTypes SignalledTrackTypes
+        {
+            get
+            {
+                TrackTypes types = TrackTypes.Train;
+                if (Mod.setting.signalSubwayTracks)
+                {
+                    types |= TrackTypes.Subway;
+                }
+                return types;
             }
         }
     }
