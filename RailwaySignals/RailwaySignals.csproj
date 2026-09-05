@@ -143,6 +143,36 @@
 		<Exec Command="$(ModPostProcessorArgs)" LogStandardErrorAsError="false" StandardErrorImportance="low" />
 	</Target>
 
+	<!--
+	  The publisher has to run in the prefix: PDX.SDK registers DiskIODefaultWindows unconditionally,
+	  so validating the content folder P/Invokes kernel32 and a host run dies there. The prefix
+	  carries .NET 10 rather than the .NET 6 the tool asks for, hence the roll forward, and its
+	  arguments have to be Windows paths.
+	-->
+	<Target Name="CustomModPublisherConfig" AfterTargets="ModPublisherConfig">
+		<PropertyGroup>
+			<PublishConfigurationWinPath>Z:$(PublishConfigurationFullPath.Replace('/', '\'))</PublishConfigurationWinPath>
+			<ContentWinPath>Z:$(ContentFullPath.Replace('/', '\'))</ContentWinPath>
+			<ModPublisherArgs>DOTNET_ROLL_FORWARD=LatestMajor protontricks-launch --appid $(CSII_AppId) "$(ModPublisherFullPath)" $(ModPublisherCommand) "$(PublishConfigurationWinPath)" -c "$(ContentWinPath)"</ModPublisherArgs>
+		</PropertyGroup>
+	</Target>
+
+	<!--
+	  The publisher reports why it failed on stdout and then exits non-zero, which the terminal
+	  logger renders as a bare MSB3073 with the reason dropped. Folding the output into the error
+	  itself is the only form that survives every renderer.
+	-->
+	<Target Name="RunModPublisher" AfterTargets="CustomModPublisherConfig">
+		<Error Condition="!Exists('$(ModPublisherFullPath)')" Text="Mod publisher not found: $(ModPublisherFullPath)" />
+		<Message Text="Run mod publisher: $(ModPublisherArgs)" Importance="high" />
+		<Exec Command="$(ModPublisherArgs)" ConsoleToMSBuild="true" IgnoreExitCode="true" StandardErrorImportance="low">
+			<Output TaskParameter="ConsoleOutput" ItemName="ModPublisherOutput" />
+			<Output TaskParameter="ExitCode" PropertyName="ModPublisherExitCode" />
+		</Exec>
+		<Message Text="@(ModPublisherOutput, '%0a')" Importance="high" />
+		<Error Condition="'$(ModPublisherExitCode)' != '0'" Text="Mod publisher exited with $(ModPublisherExitCode):%0a@(ModPublisherOutput, '%0a')" />
+	</Target>
+
 	<!-- Deploy just code changes by default. Only set this flag if making changes to the assets themselves -->
 	<Target Name="DeployModAssets" AfterTargets="DeployWIP" Condition="'$(NeedBuild)' And '$(DeployAssets)' == 'true'">
 		<ItemGroup>

@@ -8,6 +8,8 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>disable</Nullable>
     <IsPackable>false</IsPackable>
+    <!--Keeps a solution-wide publish off this project, where the mod's publish profile means nothing-->
+    <IsPublishable>false</IsPublishable>
     <AssemblyName>RailwaySignals.Tests</AssemblyName>
     <RootNamespace>RailwaySignals.Tests</RootNamespace>
   </PropertyGroup>

@@ -43,7 +43,7 @@ This setting adds realism to the simulation, but can negatively impact the effic
 
 ## Issues & Contribution
 
-For any bugs, issues, feature requests or contributions, see the [Github Repo](https://github.com/michael-foto/csii-melbourne--railway-signals/tree/main)
+For any bugs, issues, feature requests or contributions, see the [Github Repo](https://github.com/michael-foto/csii-railway-signals/tree/main)
 This mod is still in beta and early feedback, performance testing and bug hunting is greatly appreciated.
 
 ## Building
