@@ -14,33 +14,33 @@
 		<PublishConfigurationPath>Properties\PublishConfiguration.xml</PublishConfigurationPath>
 	</PropertyGroup>
 	
-	<!--Imports must be after PropertyGroup block-->
-	<!--
-	  GetEnvironmentVariable(name, EnvironmentVariableTarget.User) reads the
-	  Windows registry on .NET Framework/Wine, but returns empty on non-Windows
-	  .NET, so the path here and the properties below are hardcoded instead of
-	  relying on it. Keep the values in sync with /etc/environment.
-	-->
+	<!-- See README for the variables and where to set them.  -->
 	<PropertyGroup>
 		<CSII_AppId>949230</CSII_AppId>
-		<CSII_TOOLPATH>/home/michael/.local/share/Steam/steamapps/common/Cities Skylines II/Cities2_Data/Content/Game/.ModdingToolchain</CSII_TOOLPATH>
+		<!--Mod.props supplies the real one. Without a value the import below is never reached and an
+		    unset CSII_TOOLPATH reads as NETSDK1013 rather than as the missing import it is-->
+		<TargetFramework Condition="'$(CSII_TOOLPATH)' == ''">net48</TargetFramework>
 	</PropertyGroup>
 	<Import Project="$(CSII_TOOLPATH)/Mod.props" />
 	<Import Project="$(CSII_TOOLPATH)/Mod.targets" />
 
-	<!--Override the properties Mod.props tries to compute via the broken env-var lookup above-->
 	<PropertyGroup>
-		<ManagedPath>/home/michael/.local/share/Steam/steamapps/common/Cities Skylines II/Cities2_Data/Managed</ManagedPath>
-		<UserDataPath>/home/michael/.local/share/Steam/steamapps/compatdata/949230/pfx/drive_c/users/steamuser/AppData/LocalLow/Colossal Order/Cities Skylines II</UserDataPath>
-		<LocalModsPath>/home/michael/.local/share/Steam/steamapps/compatdata/949230/pfx/drive_c/users/steamuser/AppData/LocalLow/Colossal Order/Cities Skylines II/Mods</LocalModsPath>
-		<ModPostProcessorPath>/home/michael/.local/share/Steam/steamapps/common/Cities Skylines II/Cities2_Data/Content/Game/.ModdingToolchain/ModPostProcessor/ModPostProcessor.exe</ModPostProcessorPath>
-		<ModPublisherPath>/home/michael/.local/share/Steam/steamapps/common/Cities Skylines II/Cities2_Data/Content/Game/.ModdingToolchain/ModPublisher/ModPublisher.exe</ModPublisherPath>
-		<MSCORLIBPath>/home/michael/.local/share/Steam/steamapps/compatdata/949230/pfx/drive_c/windows/Microsoft.NET/Framework64/v4.0.30319/mscorlib.dll</MSCORLIBPath>
-		<UnityModProjectPath>/home/michael/UnityProjects/UnityModsProject</UnityModProjectPath>
-		<EntitiesVersion>1.3.10</EntitiesVersion>
+		<ManagedPath>$(CSII_MANAGEDPATH)</ManagedPath>
+		<UserDataPath>$(CSII_USERDATAPATH)</UserDataPath>
+		<LocalModsPath>$(CSII_LOCALMODSPATH)</LocalModsPath>
+		<ModPostProcessorPath>$(CSII_MODPOSTPROCESSORPATH)/ModPostProcessor.exe</ModPostProcessorPath>
+		<ModPublisherPath>$(CSII_MODPUBLISHERPATH)/ModPublisher.exe</ModPublisherPath>
+		<MSCORLIBPath>$(CSII_MSCORLIBPATH)</MSCORLIBPath>
+		<UnityModProjectPath>$(CSII_UNITYMODPROJECTPATH)</UnityModProjectPath>
+		<EntitiesVersion>$(CSII_ENTITIESVERSION)</EntitiesVersion>
 		<EntityPackagePath>$(UnityModProjectPath)/Library/PackageCache/com.unity.entities@$(EntitiesVersion)/Unity.Entities/SourceGenerators</EntityPackagePath>
 		<AssemblySearchPaths>$(AssemblySearchPaths);$(ManagedPath)</AssemblySearchPaths>
 	</PropertyGroup>
+
+	<Target Name="CheckToolchainEnvironment" BeforeTargets="CheckManagedPath">
+		<Error Condition="'$(CSII_MANAGEDPATH)' == ''" Text="CSII_MANAGEDPATH is not set. See Building in the README for the variables the build reads." />
+	</Target>
+
 	<!--Reference/Analyzer items are additive, not override-by-name, so the empty-path items Mod.props already added above (from the broken lookup) must be stripped before re-adding the correct ones-->
 	<ItemGroup>
 		<Reference Remove="@(Reference)" />
@@ -115,25 +115,11 @@
 		<None Include="$(ModTargetsFile)" Link="Properties\Mod.targets" />
 	</ItemGroup>
 
-	<!--
-	  Mod.targets builds ModPostProcessorArgs as one ~19KB single-line command
-	  (one "-r" per resolved reference, of which net48's reference-assemblies
-	  package alone contributes ~90). Wine's cmd.exe corrupts/truncates command
-	  lines that long before ModPostProcessor.exe ever sees them, splicing the
-	  tail of one argument onto the current directory as a garbage path. Fix:
-	  write the same arguments to a response file and invoke via "@file", which
-	  System.CommandLine (used by ModPostProcessor) expands by reading the file
-	  directly, bypassing cmd.exe's command-line parsing entirely.
-	-->
 	<Target Name="CustomModPostProcessorConfig" AfterTargets="ModPostProcessorConfig">
 		<PropertyGroup>
 			<ModPostProcessorResponseFile>$(IntermediateOutputPath)ModPostProcessorArgs.rsp</ModPostProcessorResponseFile>
 			<ModPostProcessorResponseFileFullPath>$([System.IO.Path]::GetFullPath('$(ModPostProcessorResponseFile)'))</ModPostProcessorResponseFileFullPath>
-			<!--
-			  ModPostProcessor hands the Unity project path to AssemblyLoadContext.LoadFromAssemblyPath
-			  to load bcl.exe, which rejects a unix path as non-absolute. The prefix maps the
-			  filesystem root at Z:, so pass the same directory in that form.
-			-->
+			<!-- Proton maps to the Z: drive -->
 			<UnityModProjectWinPath>Z:$(UnityModProjectFullPath.Replace('/', '\'))</UnityModProjectWinPath>
 		</PropertyGroup>
 		<ItemGroup>
@@ -151,32 +137,13 @@
 		</PropertyGroup>
 	</Target>
 
-	<!--
-	  The post processor runs through protontricks so it gets the same Proton build the game runs
-	  under, where it exits cleanly; under plain wine it faults on shutdown and reports -1 after
-	  having written every output. Its stderr still carries prefix chatter that says nothing about
-	  success, so only the exit code is treated as the verdict.
-
-	  BeforeTargets is needed because overriding a target moves it to the end of the AfterBuild
-	  order, which would otherwise let DeployWIP publish the assembly before Burst has processed it.
-	-->
 	<Target Name="RunModPostProcessor" AfterTargets="AfterBuild" BeforeTargets="DeployWIP" Condition="'$(NeedBuild)'">
 		<Error Condition="!Exists('$(ModPostProcessorFullPath)')" Text="Post processor not found, please check the path: $(ModPostProcessorFullPath)" />
 		<Message Text="Run post processor: $(ModPostProcessorArgs)" Importance="high" />
 		<Exec Command="$(ModPostProcessorArgs)" LogStandardErrorAsError="false" StandardErrorImportance="low" />
 	</Target>
 
-	<!--
-	  Ship the exported signal assets alongside the assembly. The game's User asset database covers
-	  the whole user data folder recursively, and LoadPrefabs registers every PrefabAsset it finds
-	  there, so assets dropped into the deployed mod folder are picked up with no code to load them.
-	-->
-	<!--
-	  Off by default. The game loads the imported assets from ImportedData already, so a copy in
-	  the mod folder registers every prefab a second time (Duplicate prefab ID) and, worse, holds
-	  the .Geometry files open so a re-import cannot overwrite them. Build with -p:DeployAssets=true
-	  only when packaging for PDX mods.
-	-->
+	<!-- Deploy just code changes by default. Only set this flag if making changes to the assets themselves -->
 	<Target Name="DeployModAssets" AfterTargets="DeployWIP" Condition="'$(NeedBuild)' And '$(DeployAssets)' == 'true'">
 		<ItemGroup>
 			<ModAsset Include="Assets\**\*" Exclude="Assets\**\*.md" />
