@@ -56,7 +56,7 @@ namespace RailwaySignals.Systems
         private const float kSetback = 3f;
 
         /// <summary>Distance from track centre to a lineside post, in metres.</summary>
-        private const float kLateralOffset = 2f;
+        private const float kLateralOffset = 2.2f;
 
         /// <summary>Drop from the normal speed head to the medium speed head below it, in metres.</summary>
         private const float kHeadSpacing = 1.15f;
@@ -65,7 +65,7 @@ namespace RailwaySignals.Systems
         /// How far every part is lowered from the lane centreline, in metres. The lane sits a little
         /// above the railhead the models are built from, so without this the whole assembly floats.
         /// </summary>
-        private const float kGroundDrop = 0.15f;
+        private const float kGroundDrop = 0.20f;
 
         /// <summary>Structure width added beyond the outermost track a bridge spans, in metres.</summary>
         private const float kGantryMargin = 7f;
@@ -199,11 +199,6 @@ namespace RailwaySignals.Systems
         {
             CompleteDependency();
 
-            if (Mod.setting.minGantryTracks > 0)
-            {
-                Mod.log.Info("No signal bridge asset is installed, so every signal goes on a lineside post.");
-            }
-
             NativeList<Entity> trackLanes = CollectSignalledTrackLanes(out TrackGraph graph);
             int laneCount = trackLanes.Length;
             var planner = new SignalPlanner
@@ -211,6 +206,7 @@ namespace RailwaySignals.Systems
                 m_Graph = graph,
                 m_LaneOverlaps = GetBufferLookup<LaneOverlap>(isReadOnly: true),
                 m_BlockSpacing = Mod.setting.intermediateBlockSpacing,
+                m_MinBlockLength = Mod.setting.minBlockLength,
                 m_IntermediateOnBidirectional = Mod.setting.intermediateOnBidirectionalTrack,
                 m_Setback = kSetback + Mod.setting.adjustSetback,
                 m_LateralOffset = kLateralOffset + Mod.setting.adjustLateral,

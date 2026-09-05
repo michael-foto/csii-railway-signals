@@ -140,20 +140,31 @@
 	<Target Name="RunModPostProcessor" AfterTargets="AfterBuild" BeforeTargets="DeployWIP" Condition="'$(NeedBuild)'">
 		<Error Condition="!Exists('$(ModPostProcessorFullPath)')" Text="Post processor not found, please check the path: $(ModPostProcessorFullPath)" />
 		<Message Text="Run post processor: $(ModPostProcessorArgs)" Importance="high" />
-		<Exec Command="$(ModPostProcessorArgs)" LogStandardErrorAsError="false" StandardErrorImportance="low" />
+		<ItemGroup>
+			<BurstOutput Include="$(TargetDir)$(TargetName)_win_x86_64.dll" />
+			<BurstOutput Include="$(TargetDir)$(TargetName)_mac_x86_64.bundle" />
+			<BurstOutput Include="$(TargetDir)$(TargetName)_linux_x86_64.so" />
+		</ItemGroup>
+		<!--Removed first so their presence afterwards can only mean this run produced them-->
+		<Delete Files="@(BurstOutput)" />
+		<Exec Command="$(ModPostProcessorArgs)" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true" StandardErrorImportance="low" ConsoleToMSBuild="true">
+			<Output TaskParameter="ConsoleOutput" ItemName="PostProcessorOutput" />
+			<Output TaskParameter="ExitCode" PropertyName="PostProcessorExitCode" />
+		</Exec>
+		<Error Condition="!Exists('%(BurstOutput.Identity)')" Text="Post processor exited with $(PostProcessorExitCode) and did not write %(BurstOutput.Identity):%0a@(PostProcessorOutput, '%0a')" />
 	</Target>
 
 	<!--
-	  The publisher has to run in the prefix: PDX.SDK registers DiskIODefaultWindows unconditionally,
-	  so validating the content folder P/Invokes kernel32 and a host run dies there. The prefix
-	  carries .NET 10 rather than the .NET 6 the tool asks for, hence the roll forward, and its
-	  arguments have to be Windows paths.
+	  The publisher has to run in the game's prefix: PDX.SDK registers DiskIODefaultWindows
+	  unconditionally, so validating the content folder P/Invokes kernel32 and a host run dies there.
+	  Launching the exe without protontricks lands it in the default wine prefix instead, which
+	  carries the wrong .NET. Its arguments have to be Windows paths.
 	-->
 	<Target Name="CustomModPublisherConfig" AfterTargets="ModPublisherConfig">
 		<PropertyGroup>
 			<PublishConfigurationWinPath>Z:$(PublishConfigurationFullPath.Replace('/', '\'))</PublishConfigurationWinPath>
 			<ContentWinPath>Z:$(ContentFullPath.Replace('/', '\'))</ContentWinPath>
-			<ModPublisherArgs>DOTNET_ROLL_FORWARD=LatestMajor protontricks-launch --appid $(CSII_AppId) "$(ModPublisherFullPath)" $(ModPublisherCommand) "$(PublishConfigurationWinPath)" -c "$(ContentWinPath)"</ModPublisherArgs>
+			<ModPublisherArgs>protontricks-launch --appid $(CSII_AppId) "$(ModPublisherFullPath)" $(ModPublisherCommand) "$(PublishConfigurationWinPath)" -c "$(ContentWinPath)"</ModPublisherArgs>
 		</PropertyGroup>
 	</Target>
 

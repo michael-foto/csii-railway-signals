@@ -29,6 +29,9 @@ namespace RailwaySignals.Signalling
         /// <summary>Target plain-line block length in metres. Zero disables intermediate signals.</summary>
         public float m_BlockSpacing;
 
+        /// <summary>Shortest block worth signalling, in metres. Zero keeps every signal placed.</summary>
+        public float m_MinBlockLength;
+
         public bool m_IntermediateOnBidirectional;
 
         /// <summary>How far back from the boundary the signal stands, in metres.</summary>
@@ -51,7 +54,7 @@ namespace RailwaySignals.Signalling
         /// <summary>Blocks no longer than this, in metres, are cramped enough to be medium speed.</summary>
         public float m_MediumBlockLength;
 
-        /// <summary>Fewest parallel tracks that warrant a signal bridge. Zero disables them.</summary>
+        /// <summary>Fewest tracks under a structure that warrant a signal bridge. Zero disables them.</summary>
         public int m_MinGantryTracks;
 
         /// <summary>Widest gap between neighbouring tracks that still counts as the same group, in metres.</summary>
@@ -71,9 +74,10 @@ namespace RailwaySignals.Signalling
         public float m_GantryLateralOffset;
 
         /// <summary>
-        /// Closest two signals on one bridge may sit across the track, in metres. Approaches to a
-        /// junction run nearly parallel a few metres apart, so without this the diverging routes of
-        /// one switch each claim a slot and their heads land on top of each other.
+        /// Closest two signals on one bridge may sit across the track, in metres, and equally the
+        /// closest two tracks may run and still be counted separately. Approaches to a junction run
+        /// nearly parallel a few metres apart, so without this the diverging routes of one switch
+        /// each claim a slot and their heads land on top of each other.
         /// </summary>
         public float m_MinGantryTrackSeparation;
 
@@ -85,6 +89,13 @@ namespace RailwaySignals.Signalling
         /// <summary>How far short of the stop blocks a buffer signal stands, in metres.</summary>
         private const float kBufferSetback = 0.5f;
 
+        /// <summary>
+        /// Safety bound on the short block sweep rather than the number of sweeps it takes. Folding
+        /// a block into a neighbour can leave the result short in turn, but a run of them collapses
+        /// in a handful of sweeps and every sweep drops at least one signal.
+        /// </summary>
+        private const int kMaxPrunePasses = 8;
+
 
         public void Plan(NativeList<Entity> trackLanes, ref SignalNetwork network)
         {
@@ -95,6 +106,7 @@ namespace RailwaySignals.Signalling
 
             PlaceFixedSignals(trackLanes, ref network, ref scratch, ref scratch2);
             PlaceIntermediateSignals(trackLanes, ref network, ref scratch, ref scratch2);
+            PruneShortBlocks(ref network);
             BuildBlocks(ref network, ref scratch);
             ClassifySignals(ref network, ref scratch);
             PlanGantries(ref network);
@@ -379,6 +391,133 @@ namespace RailwaySignals.Signalling
         }
 
         /// <summary>
+        /// Drops signals that would stand only a few metres apart. Nodes packed close together,
+        /// which is what the vanilla elevated stations are laid out from, put a junction approach on
+        /// each one and leave blocks too short to be worth signalling. A block under the minimum is
+        /// absorbed into whichever of the two blocks either side of it is itself the shorter, by
+        /// dropping the signal that divides the two. Signals at buffer stops are always kept: there
+        /// is nothing beyond one for its block to be absorbed into.
+        /// </summary>
+        private void PruneShortBlocks(ref SignalNetwork network)
+        {
+            if (m_MinBlockLength <= 0f)
+            {
+                return;
+            }
+            for (int pass = 0; pass < kMaxPrunePasses; pass++)
+            {
+                var ahead = new NativeArray<float>(network.m_Sites.Length, Allocator.Temp);
+                var next = new NativeArray<int>(network.m_Sites.Length, Allocator.Temp);
+                var behind = new NativeArray<float>(network.m_Sites.Length, Allocator.Temp);
+                var drop = new NativeArray<bool>(network.m_Sites.Length, Allocator.Temp);
+                MeasureBlocks(ref network, ref ahead, ref next, ref behind);
+
+                bool dropped = false;
+                for (int i = 0; i < network.m_Sites.Length; i++)
+                {
+                    int far = next[i];
+                    // One decision per signal per sweep: a signal already dropped has no block of
+                    // its own left, and the block of one whose far end went has just grown.
+                    if (ahead[i] >= m_MinBlockLength || far < 0 || far == i || drop[i] || drop[far])
+                    {
+                        continue;
+                    }
+                    // Nothing lies beyond a buffer signal for its block to be absorbed into, so a
+                    // short block ending at one is always folded back into the block behind. The
+                    // signal at this end is never itself one: no road leaves a buffer signal, so
+                    // its own block is unbounded and never comes up as short.
+                    drop[network.m_Sites[far].m_AtBuffers || behind[i] <= ahead[far] ? i : far] = true;
+                    dropped = true;
+                }
+
+                if (dropped)
+                {
+                    network.m_SiteByApproach.Clear();
+                    int kept = 0;
+                    for (int i = 0; i < network.m_Sites.Length; i++)
+                    {
+                        if (drop[i])
+                        {
+                            continue;
+                        }
+                        SignalSiteData site = network.m_Sites[i];
+                        network.m_Sites[kept] = site;
+                        network.m_SiteByApproach.Add(site.m_Approach, kept);
+                        kept++;
+                    }
+                    network.m_Sites.RemoveRange(kept, network.m_Sites.Length - kept);
+                }
+
+                ahead.Dispose();
+                next.Dispose();
+                behind.Dispose();
+                drop.Dispose();
+                if (!dropped)
+                {
+                    return;
+                }
+            }
+        }
+
+        /// <summary>
+        /// For every signal, the distance over the shortest road through its block to the first
+        /// signal beyond it, which signal that is, and the same measured from the other end. The
+        /// setback stands both signals the same distance back from their own boundary and so
+        /// cancels, leaving the run of lanes between the two as the length of the block.
+        /// </summary>
+        private void MeasureBlocks(ref SignalNetwork network, ref NativeArray<float> ahead, ref NativeArray<int> next, ref NativeArray<float> behind)
+        {
+            var stack = new NativeList<Walk>(64, Allocator.Temp);
+            var best = new NativeParallelHashMap<DirectedLane, float>(128, Allocator.Temp);
+            var scratch = new NativeList<DirectedLane>(16, Allocator.Temp);
+
+            for (int i = 0; i < network.m_Sites.Length; i++)
+            {
+                ahead[i] = float.MaxValue;
+                behind[i] = float.MaxValue;
+                next[i] = -1;
+            }
+
+            for (int i = 0; i < network.m_Sites.Length; i++)
+            {
+                stack.Clear();
+                best.Clear();
+                Push(network.m_Sites[i].m_Approach, 0f, ref stack, ref scratch);
+
+                int steps = 0;
+                while (stack.Length > 0 && steps < kMaxBlockLanes)
+                {
+                    Walk walk = stack[stack.Length - 1];
+                    stack.RemoveAt(stack.Length - 1);
+                    float distance = walk.m_Distance + m_Graph.GetLength(walk.m_Lane.m_Lane);
+                    // Relaxed rather than visited once: a lane first reached the long way round a
+                    // diverging route would otherwise fix the block at that length.
+                    if (best.TryGetValue(walk.m_Lane, out float known) && known <= distance)
+                    {
+                        continue;
+                    }
+                    best[walk.m_Lane] = distance;
+                    steps++;
+                    if (network.m_SiteByApproach.TryGetValue(walk.m_Lane, out int site))
+                    {
+                        if (distance < ahead[i])
+                        {
+                            ahead[i] = distance;
+                            next[i] = site;
+                        }
+                        behind[site] = math.min(behind[site], distance);
+                        continue;
+                    }
+                    Push(walk.m_Lane, distance, ref stack, ref scratch);
+                }
+            }
+
+            stack.Dispose();
+            best.Dispose();
+            scratch.Dispose();
+        }
+
+        /// <summary>
         /// Fills in each signal's block: every lane reachable ahead of it before the next signal,
         /// across all diverging routes, plus the signals that terminate those routes.
         /// </summary>
@@ -575,15 +714,18 @@ namespace RailwaySignals.Signalling
         /// Groups signals that face the same way and stand abreast of each other onto signal
         /// bridges. Signals over a group are lifted from the lineside to above their own track and
         /// squared up onto the line of the structure, which is what makes a bridge readable: every
-        /// head in one row, each one plainly over the track it applies to.
+        /// head in one row, each one plainly over the track it applies to. A group earns a bridge on
+        /// the tracks the structure would stand over, not on how many of them carry one of its
+        /// signals.
         /// </summary>
         private void PlanGantries(ref SignalNetwork network)
         {
-            if (m_MinGantryTracks <= 0 || network.m_Sites.Length < m_MinGantryTracks)
+            if (m_MinGantryTracks <= 0)
             {
                 return;
             }
             var group = new NativeList<int>(8, Allocator.Temp);
+            var tracks = new NativeList<float3>(8, Allocator.Temp);
             var taken = new NativeArray<bool>(network.m_Sites.Length, Allocator.Temp);
 
             for (int i = 0; i < network.m_Sites.Length; i++)
@@ -596,10 +738,12 @@ namespace RailwaySignals.Signalling
                 group.Add(i);
                 taken[i] = true;
                 CollectAbreast(ref network, i, ref group, ref taken);
+                GetGroupAxis(ref network, group, out float3 direction, out float3 centre, out float3 right);
+                CollectTracks(ref network, group, centre, right, ref tracks);
 
-                if (group.Length >= m_MinGantryTracks)
+                if (tracks.Length >= m_MinGantryTracks)
                 {
-                    AddGantry(ref network, group);
+                    AddGantry(ref network, group, tracks, direction, centre, right);
                 }
                 else
                 {
@@ -613,7 +757,64 @@ namespace RailwaySignals.Signalling
                 }
             }
             group.Dispose();
+            tracks.Dispose();
             taken.Dispose();
+        }
+
+        /// <summary>Mean line of travel over a group, the point it is centred on, and the axis across it.</summary>
+        private void GetGroupAxis(ref SignalNetwork network, NativeList<int> group, out float3 direction, out float3 centre, out float3 right)
+        {
+            direction = float3.zero;
+            centre = float3.zero;
+            for (int i = 0; i < group.Length; i++)
+            {
+                SignalSiteData site = network.m_Sites[group[i]];
+                direction += site.m_Direction;
+                centre += site.m_TrackPosition;
+            }
+            direction = math.normalizesafe(direction / group.Length, new float3(0f, 0f, 1f));
+            centre /= group.Length;
+            right = math.normalizesafe(math.cross(math.up(), direction), new float3(1f, 0f, 0f));
+        }
+
+        /// <summary>
+        /// The tracks a bridge over this group would stand over, as a point on each one abreast of
+        /// the group. The group's signals name the networks the structure crosses and every track of
+        /// those networks counts, so a double or quad track laid as one network is counted and
+        /// spanned in full rather than as the single track its signal happens to stand on. Tracks
+        /// closer together than the signal separation are one road diverging, so they count once.
+        /// </summary>
+        private void CollectTracks(ref SignalNetwork network, NativeList<int> group, float3 centre, float3 right, ref NativeList<float3> tracks)
+        {
+            tracks.Clear();
+            for (int i = 0; i < group.Length; i++)
+            {
+                if (!m_Graph.m_OwnerData.TryGetComponent(network.m_Sites[group[i]].m_Approach.m_Lane, out Owner owner)
+                    || !m_Graph.m_SubLanes.TryGetBuffer(owner.m_Owner, out var subLanes))
+                {
+                    continue;
+                }
+                for (int j = 0; j < subLanes.Length; j++)
+                {
+                    Entity lane = subLanes[j].m_SubLane;
+                    if (!m_Graph.IsSignalledTrack(lane) || !m_Graph.m_CurveData.TryGetComponent(lane, out Curve curve))
+                    {
+                        continue;
+                    }
+                    MathUtils.Distance(curve.m_Bezier, centre, out float t);
+                    float3 position = MathUtils.Position(curve.m_Bezier, t);
+                    float across = math.dot(position - centre, right);
+                    bool counted = false;
+                    for (int k = 0; k < tracks.Length; k++)
+                    {
+                        counted |= math.abs(across - math.dot(tracks[k] - centre, right)) < m_MinGantryTrackSeparation;
+                    }
+                    if (!counted)
+                    {
+                        tracks.Add(position);
+                    }
+                }
+            }
         }
 
         /// <summary>
@@ -681,32 +882,19 @@ namespace RailwaySignals.Signalling
             return false;
         }
 
-        private void AddGantry(ref SignalNetwork network, NativeList<int> group)
+        private void AddGantry(ref SignalNetwork network, NativeList<int> group, NativeList<float3> tracks, float3 direction, float3 centre, float3 right)
         {
-            float3 direction = float3.zero;
-            float3 centre = float3.zero;
-            for (int i = 0; i < group.Length; i++)
-            {
-                SignalSiteData site = network.m_Sites[group[i]];
-                direction += site.m_Direction;
-                centre += site.m_TrackPosition;
-            }
-            direction = math.normalizesafe(direction / group.Length, new float3(0f, 0f, 1f));
-            centre /= group.Length;
-            float3 right = math.normalizesafe(math.cross(math.up(), direction), new float3(1f, 0f, 0f));
-
             // Square the structure across the group: one line, at the mean distance along the track.
             float alongCentre = math.dot(centre, direction);
             float acrossMin = float.MaxValue;
             float acrossMax = float.MinValue;
             float railLevel = float.MinValue;
-            for (int i = 0; i < group.Length; i++)
+            for (int i = 0; i < tracks.Length; i++)
             {
-                float3 trackPosition = network.m_Sites[group[i]].m_TrackPosition;
-                float across = math.dot(trackPosition - centre, right);
+                float across = math.dot(tracks[i] - centre, right);
                 acrossMin = math.min(acrossMin, across);
                 acrossMax = math.max(acrossMax, across);
-                railLevel = math.max(railLevel, trackPosition.y);
+                railLevel = math.max(railLevel, tracks[i].y);
             }
 
             int gantry = network.m_Gantries.Length;

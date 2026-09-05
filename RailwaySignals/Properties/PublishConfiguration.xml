@@ -1,6 +1,6 @@
 <Publish>
 	<!--Id must be set in order to update existed mod. it is not required for publishing mod for the first time-->
-	<ModId Value="" />
+	<ModId Value="157965" />
 	<!--Name of the mod to display to players-->
 	<DisplayName Value="Railway Signals" />
 	<!--Short description of the mod-->
@@ -10,7 +10,7 @@
 # VR Railway Signals
 
 This mod automatically places three-position colour light signals along your railway networks. These signals
-automatically display aspects based on [Victorian Three-Position Signalling practice](https://vicsig.net/index.php?page=infrastructure&amp;section=signalling#3pst)
+automatically display aspects based on [Victorian Three-Position Signalling practice](https://vicsig.net/index.php?page=infrastructure&section=signalling#3pst)
 The aspects are computed in real-time by the game's engine based on the actual routing and positioning of trains
 on the network.
 
@@ -60,27 +60,28 @@ so turn it off if it causes issues in your map.
 
 ## Issues &amp; Contribution
 
-For any bugs, issues, feature requests or contributions, see the [Github Repo](https://github.com/michael-foto/csii-melbourne--railway-signals/tree/main)
+For any bugs, issues, feature requests or contributions, see the [Github Repo](https://github.com/michael-foto/csii-railway-signals/tree/main)
 This mod is still in beta and early feedback, performance testing and bug hunting is greatly appreciated.
 	</LongDescription>
 	<!--Thumbnail-->
 	<Thumbnail Value="Properties/Thumbnail.png" />
 	<!--Screenshot, can be set multiple times-->
-	<Screenshot Value="Properties/Screenshots/01.png" />
-	<Screenshot Value="Properties/Screenshots/02.png" />
-	<Screenshot Value="Properties/Screenshots/03.png" />
-	<Screenshot Value="Properties/Screenshots/04.png" />
-	<Screenshot Value="Properties/Screenshots/05.png" />
+	<Screenshot Value="Properties/Screenshots/01.jpg" />
+	<Screenshot Value="Properties/Screenshots/02.jpg" />
+	<Screenshot Value="Properties/Screenshots/03.jpg" />
+	<Screenshot Value="Properties/Screenshots/04.jpg" />
+	<Screenshot Value="Properties/Screenshots/05.jpg" />
 	<!--Tag, can be set multiple times-->
 	<Tag Value="Code Mod" />
 	<Tag Value="Train" />
-	<Tag Value="Transportation" />
+	<Tag Value="PublicTransportTrain" />
+	<Tag Value="PublicTransportSubway" />
+	<Tag Value="Track" />
 	<Tag Value="Prop" />
-	<Tag Value="Props" />
 	<!--Link to the forum post where the mod can be discussed-->
 	<ForumLink Value="" />
 	<!--Version of the mod-->
-	<ModVersion Value="0.1" />
+	<ModVersion Value="0.2" />
 	<!--Recommended version of the base game to use the mod-->
 	<GameVersion Value="1.6.*" />
 	<!--Dependency for the mod, can be set multiple times-->
@@ -88,9 +89,9 @@ This mod is still in beta and early feedback, performance testing and bug huntin
 	<!--Required DLC, can be set multiple times. Supported values are "Landmark Buildings", "San Fransisco Set", "Beach Properties", "Urban Promenades", "Modern Architecture"-->
 	<!--<RequiredDLC Value="" />-->
 	<!--Change log for new version. Single line or multi line. Supports minimal markdown subset-->
-	<ChangeLog Value="" />
+	<ChangeLog Value="Updated default settings" />
 	<!--External link, can be set multiple times. supported types are "discord", "github", "youtube", "twitch", "x", "paypal", "patreon", "buymeacoffee", "kofi", "crowdin", "gitlab", "gofundme"-->
-	<ExternalLink Type="github" Url="https://github.com/michael-foto/csii-melbourne--railway-signals" />
+	<ExternalLink Type="github" Url="https://github.com/michael-foto/csii-railway-signals" />
 	<!--Supported values Public, Private, Unlisted-->
 	<AccessLevel Value="Unlisted" />
 </Publish>
