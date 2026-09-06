@@ -38,13 +38,15 @@ namespace RailwaySignals.Signalling
         /// <summary>How far back from the boundary the signal stands, in metres.</summary>
         public float m_Setback;
 
-        /// <summary>Distance from track centre to a lineside post, in metres.</summary>
+        /// <summary>
+        /// Distance from track centre to a lineside post, in metres, signed across the direction of
+        /// travel: negative stands it to the left. Which side that is follows the city's hand of
+        /// running and is settled before the plan is built.
+        /// </summary>
         public float m_LateralOffset;
 
         /// <summary>Raises or lowers every placed part from the lane centreline, in metres.</summary>
         public float m_HeightAdjust;
-
-        public bool m_LeftHandTraffic;
 
         /// <summary>Curves at least this sharp make the signal admitting them a medium speed one. Units are 1/radius.</summary>
         public float m_MediumCurviness;
@@ -71,9 +73,9 @@ namespace RailwaySignals.Signalling
         public float m_GantryMargin;
 
         /// <summary>
-        /// How far to the driver's side of the track centre a bridge-carried signal hangs, in
-        /// metres. The overhead wiring runs down the middle of the track, so a head sitting on the
-        /// centreline would foul it.
+        /// How far a gantry-carried signal hangs from its own track centre, in metres, signed the
+        /// same way as <see cref="m_LateralOffset"/>. The overhead wiring runs down the middle of
+        /// the track, so a head sitting on the centreline would foul it.
         /// </summary>
         public float m_GantryLateralOffset;
 
@@ -389,7 +391,7 @@ namespace RailwaySignals.Signalling
             travel = approach.m_Forward ? tangent : -tangent;
             float3 right = math.normalizesafe(math.cross(math.up(), travel), new float3(1f, 0f, 0f));
 
-            position = trackPosition + right * (m_LeftHandTraffic ? -m_LateralOffset : m_LateralOffset);
+            position = trackPosition + right * m_LateralOffset;
             position.y += m_HeightAdjust;
             rotation = quaternion.LookRotationSafe(-travel, math.up());
         }
@@ -750,9 +752,9 @@ namespace RailwaySignals.Signalling
 
                 // A seed whose own network is wider than a bridge may be gets none, and neither
                 // does anything else standing on that network.
-                if (AddTracks(seed, origin, axis, ref tracks))
+                if (AddTracks(seed, origin, seed.m_Direction, axis, ref tracks))
                 {
-                    CollectAbreast(ref network, origin, axis, ref group, ref tracks, ref taken);
+                    CollectAbreast(ref network, origin, seed.m_Direction, axis, ref group, ref tracks, ref taken);
                 }
 
                 if (tracks.Length >= m_MinGantryTracks)
@@ -803,7 +805,7 @@ namespace RailwaySignals.Signalling
         /// road diverging and are held once. Nothing is added when the tracks do not fit, so a
         /// rejected network leaves the group as it was.
         /// </summary>
-        private bool AddTracks(SignalSiteData site, float3 origin, float3 axis, ref NativeList<float3> tracks)
+        private bool AddTracks(SignalSiteData site, float3 origin, float3 direction, float3 axis, ref NativeList<float3> tracks)
         {
             if (!m_Graph.m_OwnerData.TryGetComponent(site.m_Approach.m_Lane, out Owner owner)
                 || !m_Graph.m_SubLanes.TryGetBuffer(owner.m_Owner, out var subLanes))
@@ -811,20 +813,18 @@ namespace RailwaySignals.Signalling
                 return false;
             }
             int start = tracks.Length;
-            float reachAcross = math.max(30f, m_MaxGantryWidth);
-            var line = new Line3.Segment(origin - axis * reachAcross, origin + axis * reachAcross);
+            int measured = 0;
+            float alongCentre = math.dot(origin, direction);
             for (int i = 0; i < subLanes.Length; i++)
             {
                 Entity lane = subLanes[i].m_SubLane;
-                if (!m_Graph.IsSignalledTrack(lane) || !m_Graph.m_CurveData.TryGetComponent(lane, out Curve curve))
+                if (!m_Graph.IsSignalledTrack(lane) || !m_Graph.m_CurveData.TryGetComponent(lane, out Curve curve)
+                    || !CrossesStructure(curve.m_Bezier, direction, alongCentre, out float t))
                 {
                     continue;
                 }
-                // Taken where the track crosses the line of the structure. Its nearest point to the
-                // seed is somewhere else entirely on a road curving away, which puts the track at a
-                // width it is nowhere near by the time the structure reaches it.
-                MathUtils.Distance(curve.m_Bezier, line, out float2 hit);
-                float3 position = MathUtils.Position(curve.m_Bezier, hit.x);
+                measured++;
+                float3 position = MathUtils.Position(curve.m_Bezier, t);
                 float across = math.dot(position - origin, axis);
                 bool held = false;
                 for (int j = 0; j < tracks.Length; j++)
@@ -835,6 +835,13 @@ namespace RailwaySignals.Signalling
                 {
                     tracks.Add(position);
                 }
+            }
+
+            // A network none of whose tracks reach the structure cannot be measured here and is not
+            // one it stands over, whatever its signal is doing this far along the line.
+            if (measured == 0)
+            {
+                return false;
             }
 
             // Already spanned in full, so its signal takes a head on the structure whatever the
@@ -881,7 +888,7 @@ namespace RailwaySignals.Signalling
         /// it. A signal standing on a network already spanned joins whatever the limits say, which
         /// is what keeps one network from ending up under two bridges.
         /// </summary>
-        private void CollectAbreast(ref SignalNetwork network, float3 origin, float3 axis, ref NativeList<int> group, ref NativeList<float3> tracks, ref NativeArray<bool> taken)
+        private void CollectAbreast(ref SignalNetwork network, float3 origin, float3 direction, float3 axis, ref NativeList<int> group, ref NativeList<float3> tracks, ref NativeArray<bool> taken)
         {
             for (int head = 0; head < group.Length; head++)
             {
@@ -906,7 +913,7 @@ namespace RailwaySignals.Signalling
                     {
                         continue;
                     }
-                    if (SharesTrackWithGroup(ref network, group, candidate) || !AddTracks(candidate, origin, axis, ref tracks))
+                    if (SharesTrackWithGroup(ref network, group, candidate) || !AddTracks(candidate, origin, direction, axis, ref tracks))
                     {
                         continue;
                     }
@@ -937,11 +944,52 @@ namespace RailwaySignals.Signalling
         }
 
         /// <summary>
+        /// Where a curve passes the line the structure stands on, as a parameter along the curve.
+        /// The structure is one cut across the formation, so the point wanted is where the curve
+        /// reaches its distance along the group. Found by bisection on that distance, which runs one
+        /// way over any track that does not double back: measuring by nearest approach instead picks
+        /// whichever crossing is closest, and a line laid across a curve meets the same track twice.
+        /// </summary>
+        private static bool CrossesStructure(Bezier4x3 curve, float3 direction, float alongCentre, out float t)
+        {
+            const int kSteps = 16;
+            const int kBisections = 12;
+
+            t = 0f;
+            float from = 0f;
+            bool behind = math.dot(MathUtils.Position(curve, 0f), direction) < alongCentre;
+            for (int i = 1; i <= kSteps; i++)
+            {
+                float to = (float)i / kSteps;
+                if (math.dot(MathUtils.Position(curve, to), direction) < alongCentre == behind)
+                {
+                    from = to;
+                    continue;
+                }
+                for (int j = 0; j < kBisections; j++)
+                {
+                    float middle = (from + to) * 0.5f;
+                    if (math.dot(MathUtils.Position(curve, middle), direction) < alongCentre == behind)
+                    {
+                        from = middle;
+                    }
+                    else
+                    {
+                        to = middle;
+                    }
+                }
+                t = (from + to) * 0.5f;
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>
         /// Where the two sides of one signal's network cross the line of the structure, as offsets
         /// across from its centre. False when the network has no built section to measure or lies so
         /// nearly along the structure that it never crosses it.
         /// </summary>
-        private bool GetNetworkSides(SignalSiteData site, float3 centre, float3 right, out float2 sides)
+        private bool GetNetworkSides(SignalSiteData site, float3 centre, float3 direction, float3 right, out float2 sides)
         {
             sides = float2.zero;
             if (!m_Graph.m_OwnerData.TryGetComponent(site.m_Approach.m_Lane, out Owner owner)
@@ -951,12 +999,12 @@ namespace RailwaySignals.Signalling
             {
                 return false;
             }
-            // Sampled where the edge crosses the structure rather than at its nearest point, which
-            // on a road curving away from the group is not the same place at all.
-            float span = math.max(30f, m_MaxGantryWidth);
-            MathUtils.Distance(curve.m_Bezier, new Line3.Segment(centre - right * span, centre + right * span), out float2 hit);
-            float3 point = MathUtils.Position(curve.m_Bezier, hit.x);
-            float3 tangent = math.normalizesafe(MathUtils.Tangent(curve.m_Bezier, hit.x), new float3(0f, 0f, 1f));
+            if (!CrossesStructure(curve.m_Bezier, direction, math.dot(centre, direction), out float t))
+            {
+                return false;
+            }
+            float3 point = MathUtils.Position(curve.m_Bezier, t);
+            float3 tangent = math.normalizesafe(MathUtils.Tangent(curve.m_Bezier, t), new float3(0f, 0f, 1f));
             float3 edgeRight = math.normalizesafe(math.cross(math.up(), tangent), new float3(1f, 0f, 0f));
 
             // The structure and the edge are within the parallel test of each other, so they cross
@@ -997,7 +1045,7 @@ namespace RailwaySignals.Signalling
             // and on the next it comes down in the four foot of a track the group left out.
             for (int i = 0; i < group.Length; i++)
             {
-                if (GetNetworkSides(network.m_Sites[group[i]], centre, right, out float2 sides))
+                if (GetNetworkSides(network.m_Sites[group[i]], centre, direction, right, out float2 sides))
                 {
                     acrossMin = math.min(acrossMin, sides.x);
                     acrossMax = math.max(acrossMax, sides.y);
@@ -1022,10 +1070,10 @@ namespace RailwaySignals.Signalling
             {
                 SignalSiteData site = network.m_Sites[group[i]];
                 // Squared onto the line of the structure but kept over its own track, then stepped
-                // to the driver's side so the head clears the overhead wiring on the centreline.
+                // aside so the head clears the overhead wiring on the centreline.
                 float3 head = site.m_TrackPosition;
                 head += direction * (alongCentre - math.dot(head, direction));
-                head += right * (m_LeftHandTraffic ? -m_GantryLateralOffset : m_GantryLateralOffset);
+                head += right * m_GantryLateralOffset;
                 head.y = railLevel + m_HeightAdjust;
                 site.m_Position = head;
                 site.m_Rotation = quaternion.LookRotationSafe(-direction, math.up());

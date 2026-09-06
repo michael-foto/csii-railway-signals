@@ -209,9 +209,10 @@ namespace RailwaySignals.Systems
                 m_MinBlockLength = Mod.setting.minBlockLength,
                 m_IntermediateOnBidirectional = Mod.setting.intermediateOnBidirectionalTrack,
                 m_Setback = kSetback + Mod.setting.adjustSetback,
-                m_LateralOffset = kLateralOffset + Mod.setting.adjustLateral,
+                m_LateralOffset = m_CityConfigurationSystem.leftHandTraffic
+                    ? -(kLateralOffset + Mod.setting.adjustLateral)
+                    : kLateralOffset + Mod.setting.adjustLateral,
                 m_HeightAdjust = Mod.setting.adjustHeight - kGroundDrop,
-                m_LeftHandTraffic = m_CityConfigurationSystem.leftHandTraffic,
                 m_MediumCurviness = 1f / math.max(1f, Mod.setting.mediumSpeedCurveRadius),
                 m_MediumSpeedLimit = Mod.setting.mediumSpeedLimit / 3.6f,
                 m_MediumBlockLength = Mod.setting.mediumSpeedBlockLength,
@@ -220,9 +221,8 @@ namespace RailwaySignals.Systems
                 m_MaxGantryTrackGap = Mod.setting.maxGantryTrackGap,
                 m_GantryAlignTolerance = Mod.setting.gantryAlignTolerance,
                 m_GantryMargin = kGantryMargin + Mod.setting.adjustGantryMargin,
-                // offset to the left or right based on traffic setting
                 m_GantryLateralOffset = m_CityConfigurationSystem.leftHandTraffic
-                    ? (kGantryLateralOffset * -1) + Mod.setting.adjustGantryLateral
+                    ? -(kGantryLateralOffset + Mod.setting.adjustGantryLateral)
                     : kGantryLateralOffset + Mod.setting.adjustGantryLateral,
                 m_MinGantryTrackSeparation = Mod.setting.minGantryTrackSeparation
             };
