@@ -81,7 +81,7 @@ This mod is still in beta and early feedback, performance testing and bug huntin
 	<!--Link to the forum post where the mod can be discussed-->
 	<ForumLink Value="" />
 	<!--Version of the mod-->
-	<ModVersion Value="0.2" />
+	<ModVersion Value="0.3" />
 	<!--Recommended version of the base game to use the mod-->
 	<GameVersion Value="1.6.*" />
 	<!--Dependency for the mod, can be set multiple times-->
@@ -95,6 +95,7 @@ This mod is still in beta and early feedback, performance testing and bug huntin
 - Minimum number of tracks setting now based on number of tracks total instead of just tracks with signal sites.
 - "Widest Track Spacing" replaced with "Widest Gantry" and "Widest track gap" which together allow more fine-tuning of the gantry spawning conditions
 - Gantries now span to the edge of the built section rather than a fixed spacing above the centrepoint. This stops gantries from intersecting tracks or floating in mid-air when elevated
+- Fixed a bug where gantries spanned too wide over curves due to sampling taking a chord placing the track centres far on the inside of the curve. This is now calculated properly using tangents at the site.
 ### New "Shortest block" setting due to [#2](https://github.com/michael-foto/csii-railway-signals/issues/2).
 - Merges blocks shorter than the threshold into their nearest, shortest neighbor. Repeats until all short blocks are culled.
 ### Other
