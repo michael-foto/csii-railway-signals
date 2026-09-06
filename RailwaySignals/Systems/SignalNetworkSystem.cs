@@ -56,7 +56,7 @@ namespace RailwaySignals.Systems
         private const float kSetback = 3f;
 
         /// <summary>Distance from track centre to a lineside post, in metres.</summary>
-        private const float kLateralOffset = 2f;
+        private const float kLateralOffset = 2.2f;
 
         /// <summary>Drop from the normal speed head to the medium speed head below it, in metres.</summary>
         private const float kHeadSpacing = 1.15f;
@@ -65,10 +65,10 @@ namespace RailwaySignals.Systems
         /// How far every part is lowered from the lane centreline, in metres. The lane sits a little
         /// above the railhead the models are built from, so without this the whole assembly floats.
         /// </summary>
-        private const float kGroundDrop = 0.15f;
+        private const float kGroundDrop = 0.20f;
 
-        /// <summary>Structure width added beyond the outermost track a bridge spans, in metres.</summary>
-        private const float kGantryMargin = 7f;
+        /// <summary>Structure width added beyond the edge of the networks a bridge spans, in metres.</summary>
+        private const float kGantryMargin = -1f;
 
         /// <summary>How far off its own track centre a bridge-carried signal sits, in metres.</summary>
         private const float kGantryLateralOffset = 1.5f;
@@ -199,11 +199,6 @@ namespace RailwaySignals.Systems
         {
             CompleteDependency();
 
-            if (Mod.setting.minGantryTracks > 0)
-            {
-                Mod.log.Info("No signal bridge asset is installed, so every signal goes on a lineside post.");
-            }
-
             NativeList<Entity> trackLanes = CollectSignalledTrackLanes(out TrackGraph graph);
             int laneCount = trackLanes.Length;
             var planner = new SignalPlanner
@@ -211,19 +206,24 @@ namespace RailwaySignals.Systems
                 m_Graph = graph,
                 m_LaneOverlaps = GetBufferLookup<LaneOverlap>(isReadOnly: true),
                 m_BlockSpacing = Mod.setting.intermediateBlockSpacing,
+                m_MinBlockLength = Mod.setting.minBlockLength,
                 m_IntermediateOnBidirectional = Mod.setting.intermediateOnBidirectionalTrack,
                 m_Setback = kSetback + Mod.setting.adjustSetback,
-                m_LateralOffset = kLateralOffset + Mod.setting.adjustLateral,
+                m_LateralOffset = m_CityConfigurationSystem.leftHandTraffic
+                    ? -(kLateralOffset + Mod.setting.adjustLateral)
+                    : kLateralOffset + Mod.setting.adjustLateral,
                 m_HeightAdjust = Mod.setting.adjustHeight - kGroundDrop,
-                m_LeftHandTraffic = m_CityConfigurationSystem.leftHandTraffic,
                 m_MediumCurviness = 1f / math.max(1f, Mod.setting.mediumSpeedCurveRadius),
                 m_MediumSpeedLimit = Mod.setting.mediumSpeedLimit / 3.6f,
                 m_MediumBlockLength = Mod.setting.mediumSpeedBlockLength,
                 m_MinGantryTracks = Mod.setting.minGantryTracks,
-                m_MaxGantryTrackSpacing = Mod.setting.maxGantryTrackSpacing,
+                m_MaxGantryWidth = Mod.setting.maxGantryWidth,
+                m_MaxGantryTrackGap = Mod.setting.maxGantryTrackGap,
                 m_GantryAlignTolerance = Mod.setting.gantryAlignTolerance,
                 m_GantryMargin = kGantryMargin + Mod.setting.adjustGantryMargin,
-                m_GantryLateralOffset = kGantryLateralOffset + Mod.setting.adjustGantryLateral,
+                m_GantryLateralOffset = m_CityConfigurationSystem.leftHandTraffic
+                    ? -(kGantryLateralOffset + Mod.setting.adjustGantryLateral)
+                    : kGantryLateralOffset + Mod.setting.adjustGantryLateral,
                 m_MinGantryTrackSeparation = Mod.setting.minGantryTrackSeparation
             };
             planner.Plan(trackLanes, ref m_Network);
@@ -248,6 +248,8 @@ namespace RailwaySignals.Systems
                 m_EdgeData = GetComponentLookup<Game.Net.Edge>(isReadOnly: true),
                 m_CurveData = GetComponentLookup<Curve>(isReadOnly: true),
                 m_PrefabRefData = GetComponentLookup<PrefabRef>(isReadOnly: true),
+                m_CompositionData = GetComponentLookup<Composition>(isReadOnly: true),
+                m_PrefabCompositionData = GetComponentLookup<NetCompositionData>(isReadOnly: true),
                 m_PrefabTrackLaneData = GetComponentLookup<TrackLaneData>(isReadOnly: true),
                 m_ConnectedEdges = GetBufferLookup<Game.Net.ConnectedEdge>(isReadOnly: true),
                 m_SubLanes = GetBufferLookup<Game.Net.SubLane>(isReadOnly: true),

@@ -31,6 +31,11 @@ namespace RailwaySignals.Signalling
 
         public ComponentLookup<PrefabRef> m_PrefabRefData;
 
+        /// <summary>The built section of an edge, whose prefab carries the width the network occupies.</summary>
+        public ComponentLookup<Composition> m_CompositionData;
+
+        public ComponentLookup<NetCompositionData> m_PrefabCompositionData;
+
         public ComponentLookup<TrackLaneData> m_PrefabTrackLaneData;
 
         public BufferLookup<Game.Net.ConnectedEdge> m_ConnectedEdges;

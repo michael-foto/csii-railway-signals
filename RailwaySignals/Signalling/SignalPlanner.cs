@@ -1,6 +1,7 @@
 using Colossal.Mathematics;
 using Game.Common;
 using Game.Net;
+using Game.Prefabs;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
@@ -29,18 +30,23 @@ namespace RailwaySignals.Signalling
         /// <summary>Target plain-line block length in metres. Zero disables intermediate signals.</summary>
         public float m_BlockSpacing;
 
+        /// <summary>Shortest block worth signalling, in metres. Zero keeps every signal placed.</summary>
+        public float m_MinBlockLength;
+
         public bool m_IntermediateOnBidirectional;
 
         /// <summary>How far back from the boundary the signal stands, in metres.</summary>
         public float m_Setback;
 
-        /// <summary>Distance from track centre to a lineside post, in metres.</summary>
+        /// <summary>
+        /// Distance from track centre to a lineside post, in metres, signed across the direction of
+        /// travel: negative stands it to the left. Which side that is follows the city's hand of
+        /// running and is settled before the plan is built.
+        /// </summary>
         public float m_LateralOffset;
 
         /// <summary>Raises or lowers every placed part from the lane centreline, in metres.</summary>
         public float m_HeightAdjust;
-
-        public bool m_LeftHandTraffic;
 
         /// <summary>Curves at least this sharp make the signal admitting them a medium speed one. Units are 1/radius.</summary>
         public float m_MediumCurviness;
@@ -51,29 +57,33 @@ namespace RailwaySignals.Signalling
         /// <summary>Blocks no longer than this, in metres, are cramped enough to be medium speed.</summary>
         public float m_MediumBlockLength;
 
-        /// <summary>Fewest parallel tracks that warrant a signal bridge. Zero disables them.</summary>
+        /// <summary>Fewest tracks under a structure that warrant a signal bridge. Zero disables them.</summary>
         public int m_MinGantryTracks;
 
-        /// <summary>Widest gap between neighbouring tracks that still counts as the same group, in metres.</summary>
-        public float m_MaxGantryTrackSpacing;
+        /// <summary>Widest formation one bridge may span, measured across its outermost tracks, in metres.</summary>
+        public float m_MaxGantryWidth;
+
+        /// <summary>Widest gap a bridge may reach over from the tracks it spans to the next network, in metres.</summary>
+        public float m_MaxGantryTrackGap;
 
         /// <summary>How far apart along the track two signals can be and still share a bridge, in metres.</summary>
         public float m_GantryAlignTolerance;
 
-        /// <summary>Structure width added beyond the outermost track, in metres.</summary>
+        /// <summary>Structure width added beyond the edge of the networks it spans, in metres.</summary>
         public float m_GantryMargin;
 
         /// <summary>
-        /// How far to the driver's side of the track centre a bridge-carried signal hangs, in
-        /// metres. The overhead wiring runs down the middle of the track, so a head sitting on the
-        /// centreline would foul it.
+        /// How far a gantry-carried signal hangs from its own track centre, in metres, signed the
+        /// same way as <see cref="m_LateralOffset"/>. The overhead wiring runs down the middle of
+        /// the track, so a head sitting on the centreline would foul it.
         /// </summary>
         public float m_GantryLateralOffset;
 
         /// <summary>
-        /// Closest two signals on one bridge may sit across the track, in metres. Approaches to a
-        /// junction run nearly parallel a few metres apart, so without this the diverging routes of
-        /// one switch each claim a slot and their heads land on top of each other.
+        /// Closest two signals on one bridge may sit across the track, in metres, and equally the
+        /// closest two tracks may run and still be counted separately. Approaches to a junction run
+        /// nearly parallel a few metres apart, so without this the diverging routes of one switch
+        /// each claim a slot and their heads land on top of each other.
         /// </summary>
         public float m_MinGantryTrackSeparation;
 
@@ -85,6 +95,13 @@ namespace RailwaySignals.Signalling
         /// <summary>How far short of the stop blocks a buffer signal stands, in metres.</summary>
         private const float kBufferSetback = 0.5f;
 
+        /// <summary>
+        /// Safety bound on the short block sweep rather than the number of sweeps it takes. Folding
+        /// a block into a neighbour can leave the result short in turn, but a run of them collapses
+        /// in a handful of sweeps and every sweep drops at least one signal.
+        /// </summary>
+        private const int kMaxPrunePasses = 8;
+
 
         public void Plan(NativeList<Entity> trackLanes, ref SignalNetwork network)
         {
@@ -95,6 +112,7 @@ namespace RailwaySignals.Signalling
 
             PlaceFixedSignals(trackLanes, ref network, ref scratch, ref scratch2);
             PlaceIntermediateSignals(trackLanes, ref network, ref scratch, ref scratch2);
+            PruneShortBlocks(ref network);
             BuildBlocks(ref network, ref scratch);
             ClassifySignals(ref network, ref scratch);
             PlanGantries(ref network);
@@ -373,9 +391,136 @@ namespace RailwaySignals.Signalling
             travel = approach.m_Forward ? tangent : -tangent;
             float3 right = math.normalizesafe(math.cross(math.up(), travel), new float3(1f, 0f, 0f));
 
-            position = trackPosition + right * (m_LeftHandTraffic ? -m_LateralOffset : m_LateralOffset);
+            position = trackPosition + right * m_LateralOffset;
             position.y += m_HeightAdjust;
             rotation = quaternion.LookRotationSafe(-travel, math.up());
+        }
+
+        /// <summary>
+        /// Drops signals that would stand only a few metres apart. Nodes packed close together,
+        /// which is what the vanilla elevated stations are laid out from, put a junction approach on
+        /// each one and leave blocks too short to be worth signalling. A block under the minimum is
+        /// absorbed into whichever of the two blocks either side of it is itself the shorter, by
+        /// dropping the signal that divides the two. Signals at buffer stops are always kept: there
+        /// is nothing beyond one for its block to be absorbed into.
+        /// </summary>
+        private void PruneShortBlocks(ref SignalNetwork network)
+        {
+            if (m_MinBlockLength <= 0f)
+            {
+                return;
+            }
+            for (int pass = 0; pass < kMaxPrunePasses; pass++)
+            {
+                var ahead = new NativeArray<float>(network.m_Sites.Length, Allocator.Temp);
+                var next = new NativeArray<int>(network.m_Sites.Length, Allocator.Temp);
+                var behind = new NativeArray<float>(network.m_Sites.Length, Allocator.Temp);
+                var drop = new NativeArray<bool>(network.m_Sites.Length, Allocator.Temp);
+                MeasureBlocks(ref network, ref ahead, ref next, ref behind);
+
+                bool dropped = false;
+                for (int i = 0; i < network.m_Sites.Length; i++)
+                {
+                    int far = next[i];
+                    // One decision per signal per sweep: a signal already dropped has no block of
+                    // its own left, and the block of one whose far end went has just grown.
+                    if (ahead[i] >= m_MinBlockLength || far < 0 || far == i || drop[i] || drop[far])
+                    {
+                        continue;
+                    }
+                    // Nothing lies beyond a buffer signal for its block to be absorbed into, so a
+                    // short block ending at one is always folded back into the block behind. The
+                    // signal at this end is never itself one: no road leaves a buffer signal, so
+                    // its own block is unbounded and never comes up as short.
+                    drop[network.m_Sites[far].m_AtBuffers || behind[i] <= ahead[far] ? i : far] = true;
+                    dropped = true;
+                }
+
+                if (dropped)
+                {
+                    network.m_SiteByApproach.Clear();
+                    int kept = 0;
+                    for (int i = 0; i < network.m_Sites.Length; i++)
+                    {
+                        if (drop[i])
+                        {
+                            continue;
+                        }
+                        SignalSiteData site = network.m_Sites[i];
+                        network.m_Sites[kept] = site;
+                        network.m_SiteByApproach.Add(site.m_Approach, kept);
+                        kept++;
+                    }
+                    network.m_Sites.RemoveRange(kept, network.m_Sites.Length - kept);
+                }
+
+                ahead.Dispose();
+                next.Dispose();
+                behind.Dispose();
+                drop.Dispose();
+                if (!dropped)
+                {
+                    return;
+                }
+            }
+        }
+
+        /// <summary>
+        /// For every signal, the distance over the shortest road through its block to the first
+        /// signal beyond it, which signal that is, and the same measured from the other end. The
+        /// setback stands both signals the same distance back from their own boundary and so
+        /// cancels, leaving the run of lanes between the two as the length of the block.
+        /// </summary>
+        private void MeasureBlocks(ref SignalNetwork network, ref NativeArray<float> ahead, ref NativeArray<int> next, ref NativeArray<float> behind)
+        {
+            var stack = new NativeList<Walk>(64, Allocator.Temp);
+            var best = new NativeParallelHashMap<DirectedLane, float>(128, Allocator.Temp);
+            var scratch = new NativeList<DirectedLane>(16, Allocator.Temp);
+
+            for (int i = 0; i < network.m_Sites.Length; i++)
+            {
+                ahead[i] = float.MaxValue;
+                behind[i] = float.MaxValue;
+                next[i] = -1;
+            }
+
+            for (int i = 0; i < network.m_Sites.Length; i++)
+            {
+                stack.Clear();
+                best.Clear();
+                Push(network.m_Sites[i].m_Approach, 0f, ref stack, ref scratch);
+
+                int steps = 0;
+                while (stack.Length > 0 && steps < kMaxBlockLanes)
+                {
+                    Walk walk = stack[stack.Length - 1];
+                    stack.RemoveAt(stack.Length - 1);
+                    float distance = walk.m_Distance + m_Graph.GetLength(walk.m_Lane.m_Lane);
+                    // Relaxed rather than visited once: a lane first reached the long way round a
+                    // diverging route would otherwise fix the block at that length.
+                    if (best.TryGetValue(walk.m_Lane, out float known) && known <= distance)
+                    {
+                        continue;
+                    }
+                    best[walk.m_Lane] = distance;
+                    steps++;
+                    if (network.m_SiteByApproach.TryGetValue(walk.m_Lane, out int site))
+                    {
+                        if (distance < ahead[i])
+                        {
+                            ahead[i] = distance;
+                            next[i] = site;
+                        }
+                        behind[site] = math.min(behind[site], distance);
+                        continue;
+                    }
+                    Push(walk.m_Lane, distance, ref stack, ref scratch);
+                }
+            }
+
+            stack.Dispose();
+            best.Dispose();
+            scratch.Dispose();
         }
 
         /// <summary>
@@ -575,31 +720,47 @@ namespace RailwaySignals.Signalling
         /// Groups signals that face the same way and stand abreast of each other onto signal
         /// bridges. Signals over a group are lifted from the lineside to above their own track and
         /// squared up onto the line of the structure, which is what makes a bridge readable: every
-        /// head in one row, each one plainly over the track it applies to.
+        /// head in one row, each one plainly over the track it applies to. A group earns a bridge on
+        /// the tracks the structure would stand over, not on how many of them carry one of its
+        /// signals. The group is gathered in the seed's own frame, which is the only one the width
+        /// of a formation is well defined in; the structure is then squared onto the mean of the
+        /// signals that ended up on it.
         /// </summary>
         private void PlanGantries(ref SignalNetwork network)
         {
-            if (m_MinGantryTracks <= 0 || network.m_Sites.Length < m_MinGantryTracks)
+            if (m_MinGantryTracks <= 0)
             {
                 return;
             }
             var group = new NativeList<int>(8, Allocator.Temp);
+            var tracks = new NativeList<float3>(8, Allocator.Temp);
             var taken = new NativeArray<bool>(network.m_Sites.Length, Allocator.Temp);
 
             for (int i = 0; i < network.m_Sites.Length; i++)
             {
-                if (taken[i] || network.m_Sites[i].m_AtBuffers)
+                SignalSiteData seed = network.m_Sites[i];
+                if (taken[i] || seed.m_AtBuffers)
                 {
                     continue;
                 }
                 group.Clear();
+                tracks.Clear();
                 group.Add(i);
                 taken[i] = true;
-                CollectAbreast(ref network, i, ref group, ref taken);
+                float3 origin = seed.m_TrackPosition;
+                float3 axis = math.normalizesafe(math.cross(math.up(), seed.m_Direction), new float3(1f, 0f, 0f));
 
-                if (group.Length >= m_MinGantryTracks)
+                // A seed whose own network is wider than a bridge may be gets none, and neither
+                // does anything else standing on that network.
+                if (AddTracks(seed, origin, seed.m_Direction, axis, ref tracks))
                 {
-                    AddGantry(ref network, group);
+                    CollectAbreast(ref network, origin, seed.m_Direction, axis, ref group, ref tracks, ref taken);
+                }
+
+                if (tracks.Length >= m_MinGantryTracks)
+                {
+                    GetGroupAxis(ref network, group, out float3 direction, out float3 centre, out float3 right);
+                    AddGantry(ref network, group, tracks, direction, centre, right);
                 }
                 else
                 {
@@ -613,14 +774,121 @@ namespace RailwaySignals.Signalling
                 }
             }
             group.Dispose();
+            tracks.Dispose();
             taken.Dispose();
         }
 
+        /// <summary>Mean line of travel over a group, the point it is centred on, and the axis across it.</summary>
+        private void GetGroupAxis(ref SignalNetwork network, NativeList<int> group, out float3 direction, out float3 centre, out float3 right)
+        {
+            direction = float3.zero;
+            centre = float3.zero;
+            for (int i = 0; i < group.Length; i++)
+            {
+                SignalSiteData site = network.m_Sites[group[i]];
+                direction += site.m_Direction;
+                centre += site.m_TrackPosition;
+            }
+            direction = math.normalizesafe(direction / group.Length, new float3(0f, 0f, 1f));
+            centre /= group.Length;
+            right = math.normalizesafe(math.cross(math.up(), direction), new float3(1f, 0f, 0f));
+        }
+
         /// <summary>
-        /// Grows a group outwards one track at a time, so a wide formation is gathered by stepping
-        /// across neighbouring tracks rather than by requiring every track to be near the first.
+        /// Brings every track of one signal's network under the structure, as a point on each one
+        /// abreast of the group, and answers whether they fit. A network is spanned whole or not at
+        /// all, so a double or quad track laid as one network is counted and spanned in full rather
+        /// than as the single track its signal happens to stand on, and the limits decide how many
+        /// networks one bridge gathers rather than where it cuts through one: it has to stay inside
+        /// the width, and it has to come within the gap of track the structure already stands over
+        /// so that a bridge is never thrown across open ground. Tracks on the same alignment are one
+        /// road diverging and are held once. Nothing is added when the tracks do not fit, so a
+        /// rejected network leaves the group as it was.
         /// </summary>
-        private void CollectAbreast(ref SignalNetwork network, int seed, ref NativeList<int> group, ref NativeArray<bool> taken)
+        private bool AddTracks(SignalSiteData site, float3 origin, float3 direction, float3 axis, ref NativeList<float3> tracks)
+        {
+            if (!m_Graph.m_OwnerData.TryGetComponent(site.m_Approach.m_Lane, out Owner owner)
+                || !m_Graph.m_SubLanes.TryGetBuffer(owner.m_Owner, out var subLanes))
+            {
+                return false;
+            }
+            int start = tracks.Length;
+            int measured = 0;
+            float alongCentre = math.dot(origin, direction);
+            for (int i = 0; i < subLanes.Length; i++)
+            {
+                Entity lane = subLanes[i].m_SubLane;
+                if (!m_Graph.IsSignalledTrack(lane) || !m_Graph.m_CurveData.TryGetComponent(lane, out Curve curve)
+                    || !CrossesStructure(curve.m_Bezier, direction, alongCentre, out float t))
+                {
+                    continue;
+                }
+                measured++;
+                float3 position = MathUtils.Position(curve.m_Bezier, t);
+                float across = math.dot(position - origin, axis);
+                bool held = false;
+                for (int j = 0; j < tracks.Length; j++)
+                {
+                    held |= math.abs(across - math.dot(tracks[j] - origin, axis)) < m_MinGantryTrackSeparation;
+                }
+                if (!held)
+                {
+                    tracks.Add(position);
+                }
+            }
+
+            // A network none of whose tracks reach the structure cannot be measured here and is not
+            // one it stands over, whatever its signal is doing this far along the line.
+            if (measured == 0)
+            {
+                return false;
+            }
+
+            // Already spanned in full, so its signal takes a head on the structure whatever the
+            // limits say. This is what keeps one network from ending up under two bridges.
+            if (tracks.Length == start)
+            {
+                return true;
+            }
+
+            float acrossMin = float.MaxValue;
+            float acrossMax = float.MinValue;
+            for (int i = 0; i < tracks.Length; i++)
+            {
+                float across = math.dot(tracks[i] - origin, axis);
+                acrossMin = math.min(acrossMin, across);
+                acrossMax = math.max(acrossMax, across);
+            }
+
+            // How far out the structure has to reach from track it already stands over to take this
+            // network in. The seed network stands on its own and has nothing to reach across to.
+            float reach = start > 0 ? float.MaxValue : 0f;
+            for (int i = start; i < tracks.Length; i++)
+            {
+                float across = math.dot(tracks[i] - origin, axis);
+                for (int j = 0; j < start; j++)
+                {
+                    reach = math.min(reach, math.abs(across - math.dot(tracks[j] - origin, axis)));
+                }
+            }
+
+            if (acrossMax - acrossMin > m_MaxGantryWidth || reach > m_MaxGantryTrackGap)
+            {
+                tracks.RemoveRange(start, tracks.Length - start);
+                return false;
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Grows a group outwards network by network, so a wide formation is gathered by reaching
+        /// across to whole networks in turn rather than by requiring every track to be near the
+        /// first. Every new member is scanned against again, so a network held off for being too
+        /// far to reach is taken up later once one between the two has brought the structure out to
+        /// it. A signal standing on a network already spanned joins whatever the limits say, which
+        /// is what keeps one network from ending up under two bridges.
+        /// </summary>
+        private void CollectAbreast(ref SignalNetwork network, float3 origin, float3 direction, float3 axis, ref NativeList<int> group, ref NativeList<float3> tracks, ref NativeArray<bool> taken)
         {
             for (int head = 0; head < group.Length; head++)
             {
@@ -641,17 +909,11 @@ namespace RailwaySignals.Signalling
                         continue;
                     }
                     float3 delta = candidate.m_TrackPosition - from.m_TrackPosition;
-                    float along = math.dot(delta, from.m_Direction);
-                    if (math.abs(along) > m_GantryAlignTolerance)
+                    if (math.abs(math.dot(delta, from.m_Direction)) > m_GantryAlignTolerance)
                     {
                         continue;
                     }
-                    float across = math.length(delta - from.m_Direction * along);
-                    if (across > m_MaxGantryTrackSpacing)
-                    {
-                        continue;
-                    }
-                    if (SharesTrackWithGroup(ref network, group, candidate))
+                    if (SharesTrackWithGroup(ref network, group, candidate) || !AddTracks(candidate, origin, direction, axis, ref tracks))
                     {
                         continue;
                     }
@@ -681,32 +943,113 @@ namespace RailwaySignals.Signalling
             return false;
         }
 
-        private void AddGantry(ref SignalNetwork network, NativeList<int> group)
+        /// <summary>
+        /// Where a curve passes the line the structure stands on, as a parameter along the curve.
+        /// The structure is one cut across the formation, so the point wanted is where the curve
+        /// reaches its distance along the group. Found by bisection on that distance, which runs one
+        /// way over any track that does not double back: measuring by nearest approach instead picks
+        /// whichever crossing is closest, and a line laid across a curve meets the same track twice.
+        /// </summary>
+        private static bool CrossesStructure(Bezier4x3 curve, float3 direction, float alongCentre, out float t)
         {
-            float3 direction = float3.zero;
-            float3 centre = float3.zero;
-            for (int i = 0; i < group.Length; i++)
-            {
-                SignalSiteData site = network.m_Sites[group[i]];
-                direction += site.m_Direction;
-                centre += site.m_TrackPosition;
-            }
-            direction = math.normalizesafe(direction / group.Length, new float3(0f, 0f, 1f));
-            centre /= group.Length;
-            float3 right = math.normalizesafe(math.cross(math.up(), direction), new float3(1f, 0f, 0f));
+            const int kSteps = 16;
+            const int kBisections = 12;
 
+            t = 0f;
+            float from = 0f;
+            bool behind = math.dot(MathUtils.Position(curve, 0f), direction) < alongCentre;
+            for (int i = 1; i <= kSteps; i++)
+            {
+                float to = (float)i / kSteps;
+                if (math.dot(MathUtils.Position(curve, to), direction) < alongCentre == behind)
+                {
+                    from = to;
+                    continue;
+                }
+                for (int j = 0; j < kBisections; j++)
+                {
+                    float middle = (from + to) * 0.5f;
+                    if (math.dot(MathUtils.Position(curve, middle), direction) < alongCentre == behind)
+                    {
+                        from = middle;
+                    }
+                    else
+                    {
+                        to = middle;
+                    }
+                }
+                t = (from + to) * 0.5f;
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Where the two sides of one signal's network cross the line of the structure, as offsets
+        /// across from its centre. False when the network has no built section to measure or lies so
+        /// nearly along the structure that it never crosses it.
+        /// </summary>
+        private bool GetNetworkSides(SignalSiteData site, float3 centre, float3 direction, float3 right, out float2 sides)
+        {
+            sides = float2.zero;
+            if (!m_Graph.m_OwnerData.TryGetComponent(site.m_Approach.m_Lane, out Owner owner)
+                || !m_Graph.m_CompositionData.TryGetComponent(owner.m_Owner, out Composition composition)
+                || !m_Graph.m_PrefabCompositionData.TryGetComponent(composition.m_Edge, out NetCompositionData built)
+                || !m_Graph.m_CurveData.TryGetComponent(owner.m_Owner, out Curve curve))
+            {
+                return false;
+            }
+            if (!CrossesStructure(curve.m_Bezier, direction, math.dot(centre, direction), out float t))
+            {
+                return false;
+            }
+            float3 point = MathUtils.Position(curve.m_Bezier, t);
+            float3 tangent = math.normalizesafe(MathUtils.Tangent(curve.m_Bezier, t), new float3(0f, 0f, 1f));
+            float3 edgeRight = math.normalizesafe(math.cross(math.up(), tangent), new float3(1f, 0f, 0f));
+
+            // The structure and the edge are within the parallel test of each other, so they cross
+            // at a shallow angle and the sides sit further apart along the structure than the width
+            // of the network measured square to its own centreline.
+            float lean = math.dot(right, edgeRight);
+            if (math.abs(lean) < 0.5f)
+            {
+                return false;
+            }
+            float half = built.m_Width * 0.5f;
+            float toCentre = math.dot(point - centre, edgeRight) / lean;
+            float toSide = half / math.abs(lean);
+            float middle = built.m_MiddleOffset / lean;
+            sides = new float2(math.min(toCentre - toSide - middle, toCentre + toSide - middle),
+                math.max(toCentre - toSide - middle, toCentre + toSide - middle));
+            return true;
+        }
+
+        private void AddGantry(ref SignalNetwork network, NativeList<int> group, NativeList<float3> tracks, float3 direction, float3 centre, float3 right)
+        {
             // Square the structure across the group: one line, at the mean distance along the track.
             float alongCentre = math.dot(centre, direction);
             float acrossMin = float.MaxValue;
             float acrossMax = float.MinValue;
             float railLevel = float.MinValue;
-            for (int i = 0; i < group.Length; i++)
+            for (int i = 0; i < tracks.Length; i++)
             {
-                float3 trackPosition = network.m_Sites[group[i]].m_TrackPosition;
-                float across = math.dot(trackPosition - centre, right);
+                float across = math.dot(tracks[i] - centre, right);
                 acrossMin = math.min(acrossMin, across);
                 acrossMax = math.max(acrossMax, across);
-                railLevel = math.max(railLevel, trackPosition.y);
+                railLevel = math.max(railLevel, tracks[i].y);
+            }
+
+            // Carried out to the edge of every network the structure crosses, where the wiring masts
+            // stand. A leg put a fixed distance out from the outermost rail instead has nothing to
+            // do with how wide the ground under it is: on one formation it lands out on open ground
+            // and on the next it comes down in the four foot of a track the group left out.
+            for (int i = 0; i < group.Length; i++)
+            {
+                if (GetNetworkSides(network.m_Sites[group[i]], centre, direction, right, out float2 sides))
+                {
+                    acrossMin = math.min(acrossMin, sides.x);
+                    acrossMax = math.max(acrossMax, sides.y);
+                }
             }
 
             int gantry = network.m_Gantries.Length;
@@ -727,10 +1070,10 @@ namespace RailwaySignals.Signalling
             {
                 SignalSiteData site = network.m_Sites[group[i]];
                 // Squared onto the line of the structure but kept over its own track, then stepped
-                // to the driver's side so the head clears the overhead wiring on the centreline.
+                // aside so the head clears the overhead wiring on the centreline.
                 float3 head = site.m_TrackPosition;
                 head += direction * (alongCentre - math.dot(head, direction));
-                head += right * (m_LeftHandTraffic ? -m_GantryLateralOffset : m_GantryLateralOffset);
+                head += right * m_GantryLateralOffset;
                 head.y = railLevel + m_HeightAdjust;
                 site.m_Position = head;
                 site.m_Rotation = quaternion.LookRotationSafe(-direction, math.up());
