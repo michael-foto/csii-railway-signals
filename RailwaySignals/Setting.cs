@@ -82,9 +82,15 @@ namespace RailwaySignals
         [SettingsUISection(kSection, kGantryGroup)]
         public int minGantryTracks { get; set; }
 
-        [SettingsUISlider(min = 4f, max = 30f, step = 0.5f, unit = Unit.kLength, scalarMultiplier = 1f)]
+        /// <summary>Widest formation one gantry may span, measured across its outermost tracks, in metres.</summary>
+        [SettingsUISlider(min = 5f, max = 100f, step = 2.5f, unit = Unit.kLength, scalarMultiplier = 1f)]
         [SettingsUISection(kSection, kGantryGroup)]
-        public float maxGantryTrackSpacing { get; set; }
+        public float maxGantryWidth { get; set; }
+
+        /// <summary>Widest gap a gantry may reach over to the next network, in metres.</summary>
+        [SettingsUISlider(min = 4f, max = 50f, step = 0.5f, unit = Unit.kLength, scalarMultiplier = 1f)]
+        [SettingsUISection(kSection, kGantryGroup)]
+        public float maxGantryTrackGap { get; set; }
 
         [SettingsUISlider(min = 1f, max = 60f, step = 1f, unit = Unit.kLength, scalarMultiplier = 1f)]
         [SettingsUISection(kSection, kGantryGroup)]
@@ -173,7 +179,8 @@ namespace RailwaySignals
             mediumSpeedLimit = 10;
             mediumSpeedBlockLength = 100;
             minGantryTracks = 2;
-            maxGantryTrackSpacing = 11.5f;
+            maxGantryWidth = 40f;
+            maxGantryTrackGap = 15f;
             gantryAlignTolerance = 20f;
             minGantryTrackSeparation = 1.5f;
             adjustSetback = 0f;

@@ -57,8 +57,11 @@ namespace RailwaySignals.Signalling
         /// <summary>Fewest tracks under a structure that warrant a signal bridge. Zero disables them.</summary>
         public int m_MinGantryTracks;
 
-        /// <summary>Widest gap between neighbouring tracks that still counts as the same group, in metres.</summary>
-        public float m_MaxGantryTrackSpacing;
+        /// <summary>Widest formation one bridge may span, measured across its outermost tracks, in metres.</summary>
+        public float m_MaxGantryWidth;
+
+        /// <summary>Widest gap a bridge may reach over from the tracks it spans to the next network, in metres.</summary>
+        public float m_MaxGantryTrackGap;
 
         /// <summary>How far apart along the track two signals can be and still share a bridge, in metres.</summary>
         public float m_GantryAlignTolerance;
@@ -716,7 +719,9 @@ namespace RailwaySignals.Signalling
         /// squared up onto the line of the structure, which is what makes a bridge readable: every
         /// head in one row, each one plainly over the track it applies to. A group earns a bridge on
         /// the tracks the structure would stand over, not on how many of them carry one of its
-        /// signals.
+        /// signals. The group is gathered in the seed's own frame, which is the only one the width
+        /// of a formation is well defined in; the structure is then squared onto the mean of the
+        /// signals that ended up on it.
         /// </summary>
         private void PlanGantries(ref SignalNetwork network)
         {
@@ -730,19 +735,28 @@ namespace RailwaySignals.Signalling
 
             for (int i = 0; i < network.m_Sites.Length; i++)
             {
-                if (taken[i] || network.m_Sites[i].m_AtBuffers)
+                SignalSiteData seed = network.m_Sites[i];
+                if (taken[i] || seed.m_AtBuffers)
                 {
                     continue;
                 }
                 group.Clear();
+                tracks.Clear();
                 group.Add(i);
                 taken[i] = true;
-                CollectAbreast(ref network, i, ref group, ref taken);
-                GetGroupAxis(ref network, group, out float3 direction, out float3 centre, out float3 right);
-                CollectTracks(ref network, group, centre, right, ref tracks);
+                float3 origin = seed.m_TrackPosition;
+                float3 axis = math.normalizesafe(math.cross(math.up(), seed.m_Direction), new float3(1f, 0f, 0f));
+
+                // A seed whose own network is wider than a bridge may be gets none, and neither
+                // does anything else standing on that network.
+                if (AddTracks(seed, origin, axis, ref tracks))
+                {
+                    CollectAbreast(ref network, origin, axis, ref group, ref tracks, ref taken);
+                }
 
                 if (tracks.Length >= m_MinGantryTracks)
                 {
+                    GetGroupAxis(ref network, group, out float3 direction, out float3 centre, out float3 right);
                     AddGantry(ref network, group, tracks, direction, centre, right);
                 }
                 else
@@ -778,50 +792,90 @@ namespace RailwaySignals.Signalling
         }
 
         /// <summary>
-        /// The tracks a bridge over this group would stand over, as a point on each one abreast of
-        /// the group. The group's signals name the networks the structure crosses and every track of
-        /// those networks counts, so a double or quad track laid as one network is counted and
-        /// spanned in full rather than as the single track its signal happens to stand on. Tracks
-        /// closer together than the signal separation are one road diverging, so they count once.
+        /// Brings every track of one signal's network under the structure, as a point on each one
+        /// abreast of the group, and answers whether they fit. A network is spanned whole or not at
+        /// all, so a double or quad track laid as one network is counted and spanned in full rather
+        /// than as the single track its signal happens to stand on, and the limits decide how many
+        /// networks one bridge gathers rather than where it cuts through one: it has to stay inside
+        /// the width, and it has to come within the gap of track the structure already stands over
+        /// so that a bridge is never thrown across open ground. Tracks on the same alignment are one
+        /// road diverging and are held once. Nothing is added when the tracks do not fit, so a
+        /// rejected network leaves the group as it was.
         /// </summary>
-        private void CollectTracks(ref SignalNetwork network, NativeList<int> group, float3 centre, float3 right, ref NativeList<float3> tracks)
+        private bool AddTracks(SignalSiteData site, float3 origin, float3 axis, ref NativeList<float3> tracks)
         {
-            tracks.Clear();
-            for (int i = 0; i < group.Length; i++)
+            if (!m_Graph.m_OwnerData.TryGetComponent(site.m_Approach.m_Lane, out Owner owner)
+                || !m_Graph.m_SubLanes.TryGetBuffer(owner.m_Owner, out var subLanes))
             {
-                if (!m_Graph.m_OwnerData.TryGetComponent(network.m_Sites[group[i]].m_Approach.m_Lane, out Owner owner)
-                    || !m_Graph.m_SubLanes.TryGetBuffer(owner.m_Owner, out var subLanes))
+                return false;
+            }
+            int start = tracks.Length;
+            for (int i = 0; i < subLanes.Length; i++)
+            {
+                Entity lane = subLanes[i].m_SubLane;
+                if (!m_Graph.IsSignalledTrack(lane) || !m_Graph.m_CurveData.TryGetComponent(lane, out Curve curve))
                 {
                     continue;
                 }
-                for (int j = 0; j < subLanes.Length; j++)
+                MathUtils.Distance(curve.m_Bezier, origin, out float t);
+                float3 position = MathUtils.Position(curve.m_Bezier, t);
+                float across = math.dot(position - origin, axis);
+                bool held = false;
+                for (int j = 0; j < tracks.Length; j++)
                 {
-                    Entity lane = subLanes[j].m_SubLane;
-                    if (!m_Graph.IsSignalledTrack(lane) || !m_Graph.m_CurveData.TryGetComponent(lane, out Curve curve))
-                    {
-                        continue;
-                    }
-                    MathUtils.Distance(curve.m_Bezier, centre, out float t);
-                    float3 position = MathUtils.Position(curve.m_Bezier, t);
-                    float across = math.dot(position - centre, right);
-                    bool counted = false;
-                    for (int k = 0; k < tracks.Length; k++)
-                    {
-                        counted |= math.abs(across - math.dot(tracks[k] - centre, right)) < m_MinGantryTrackSeparation;
-                    }
-                    if (!counted)
-                    {
-                        tracks.Add(position);
-                    }
+                    held |= math.abs(across - math.dot(tracks[j] - origin, axis)) < m_MinGantryTrackSeparation;
+                }
+                if (!held)
+                {
+                    tracks.Add(position);
                 }
             }
+
+            // Already spanned in full, so its signal takes a head on the structure whatever the
+            // limits say. This is what keeps one network from ending up under two bridges.
+            if (tracks.Length == start)
+            {
+                return true;
+            }
+
+            float acrossMin = float.MaxValue;
+            float acrossMax = float.MinValue;
+            for (int i = 0; i < tracks.Length; i++)
+            {
+                float across = math.dot(tracks[i] - origin, axis);
+                acrossMin = math.min(acrossMin, across);
+                acrossMax = math.max(acrossMax, across);
+            }
+
+            // How far out the structure has to reach from track it already stands over to take this
+            // network in. The seed network stands on its own and has nothing to reach across to.
+            float reach = start > 0 ? float.MaxValue : 0f;
+            for (int i = start; i < tracks.Length; i++)
+            {
+                float across = math.dot(tracks[i] - origin, axis);
+                for (int j = 0; j < start; j++)
+                {
+                    reach = math.min(reach, math.abs(across - math.dot(tracks[j] - origin, axis)));
+                }
+            }
+
+            if (acrossMax - acrossMin > m_MaxGantryWidth || reach > m_MaxGantryTrackGap)
+            {
+                tracks.RemoveRange(start, tracks.Length - start);
+                return false;
+            }
+            return true;
         }
 
         /// <summary>
-        /// Grows a group outwards one track at a time, so a wide formation is gathered by stepping
-        /// across neighbouring tracks rather than by requiring every track to be near the first.
+        /// Grows a group outwards network by network, so a wide formation is gathered by reaching
+        /// across to whole networks in turn rather than by requiring every track to be near the
+        /// first. Every new member is scanned against again, so a network held off for being too
+        /// far to reach is taken up later once one between the two has brought the structure out to
+        /// it. A signal standing on a network already spanned joins whatever the limits say, which
+        /// is what keeps one network from ending up under two bridges.
         /// </summary>
-        private void CollectAbreast(ref SignalNetwork network, int seed, ref NativeList<int> group, ref NativeArray<bool> taken)
+        private void CollectAbreast(ref SignalNetwork network, float3 origin, float3 axis, ref NativeList<int> group, ref NativeList<float3> tracks, ref NativeArray<bool> taken)
         {
             for (int head = 0; head < group.Length; head++)
             {
@@ -842,17 +896,11 @@ namespace RailwaySignals.Signalling
                         continue;
                     }
                     float3 delta = candidate.m_TrackPosition - from.m_TrackPosition;
-                    float along = math.dot(delta, from.m_Direction);
-                    if (math.abs(along) > m_GantryAlignTolerance)
+                    if (math.abs(math.dot(delta, from.m_Direction)) > m_GantryAlignTolerance)
                     {
                         continue;
                     }
-                    float across = math.length(delta - from.m_Direction * along);
-                    if (across > m_MaxGantryTrackSpacing)
-                    {
-                        continue;
-                    }
-                    if (SharesTrackWithGroup(ref network, group, candidate))
+                    if (SharesTrackWithGroup(ref network, group, candidate) || !AddTracks(candidate, origin, axis, ref tracks))
                     {
                         continue;
                     }

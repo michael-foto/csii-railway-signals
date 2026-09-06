@@ -58,8 +58,11 @@ namespace RailwaySignals
                 { m_Setting.GetOptionLabelLocaleID(nameof(Setting.minGantryTracks)), "Tracks needed for a gantry" },
                 { m_Setting.GetOptionDescLocaleID(nameof(Setting.minGantryTracks)), "How many parallel tracks a gantry has to stand over before the signals abreast of each other there are put on one instead of their own lineside posts. Every track of a network counts, so a double track counts as two and a quad as four whether or not each one is signalled here. Set to zero to always use lineside posts." },
 
-                { m_Setting.GetOptionLabelLocaleID(nameof(Setting.maxGantryTrackSpacing)), "Widest track spacing" },
-                { m_Setting.GetOptionDescLocaleID(nameof(Setting.maxGantryTrackSpacing)), "How far apart neighbouring tracks can be and still count as one group. The group grows one track at a time, so a wide formation is gathered as long as each step is within this." },
+                { m_Setting.GetOptionLabelLocaleID(nameof(Setting.maxGantryWidth)), "Widest gantry" },
+                { m_Setting.GetOptionDescLocaleID(nameof(Setting.maxGantryWidth)), "The widest a gantry may be, measured across its outermost tracks. A gantry spans whole networks, so it takes in another one only if all of that network's tracks fit within this. The structure itself is this plus its overhang at either end." },
+
+                { m_Setting.GetOptionLabelLocaleID(nameof(Setting.maxGantryTrackGap)), "Widest track gap" },
+                { m_Setting.GetOptionDescLocaleID(nameof(Setting.maxGantryTrackGap)), "How far a gantry may reach from the tracks it already stands over to the next network across. Tracks further off than this get their own gantry or lineside posts instead, so a gantry is never thrown over open ground. A network is always spanned whole, so this decides where one gantry ends and the next begins, never where one is cut through." },
 
                 { m_Setting.GetOptionLabelLocaleID(nameof(Setting.gantryAlignTolerance)), "Alignment tolerance" },
                 { m_Setting.GetOptionDescLocaleID(nameof(Setting.gantryAlignTolerance)), "How far apart along the track two signals can sit and still share a gantry. Signals that do share one are squared up onto its line." },

@@ -22,7 +22,7 @@ Signals are automatically placed at the following locations with some configurat
 - Permanant stop signals are placed at every buffer block.
 - Automatic signals are placed at fixed spacing along plain line track
 
-Signals are placed following the city's left or right hand running, and face the approaching train.  When several signals are placed in close proximity on parallel lines, they move onto an overhead gantry structure. The spacing and width of this is tunable to your liking with reasonable defaults with the option to disable the feature if preferred.
+Signals are placed following the city's left or right hand running, and face the approaching train.  Where enough parallel tracks run abreast of each other, the signals over them move onto an overhead gantry structure. Every track of a network counts towards this, so a double track counts as two and a quad as four whether or not each one is signalled there, and a gantry spans whole networks. The tracks needed, the widest a gantry may be and how far one may reach between networks are tunable to your liking with reasonable defaults, with the option to disable the feature if preferred.
 
 ## Signal Aspects
 
