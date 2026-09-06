@@ -1,6 +1,7 @@
 using Colossal.Mathematics;
 using Game.Common;
 using Game.Net;
+using Game.Prefabs;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
@@ -66,7 +67,7 @@ namespace RailwaySignals.Signalling
         /// <summary>How far apart along the track two signals can be and still share a bridge, in metres.</summary>
         public float m_GantryAlignTolerance;
 
-        /// <summary>Structure width added beyond the outermost track, in metres.</summary>
+        /// <summary>Structure width added beyond the edge of the networks it spans, in metres.</summary>
         public float m_GantryMargin;
 
         /// <summary>
@@ -810,6 +811,8 @@ namespace RailwaySignals.Signalling
                 return false;
             }
             int start = tracks.Length;
+            float reachAcross = math.max(30f, m_MaxGantryWidth);
+            var line = new Line3.Segment(origin - axis * reachAcross, origin + axis * reachAcross);
             for (int i = 0; i < subLanes.Length; i++)
             {
                 Entity lane = subLanes[i].m_SubLane;
@@ -817,8 +820,11 @@ namespace RailwaySignals.Signalling
                 {
                     continue;
                 }
-                MathUtils.Distance(curve.m_Bezier, origin, out float t);
-                float3 position = MathUtils.Position(curve.m_Bezier, t);
+                // Taken where the track crosses the line of the structure. Its nearest point to the
+                // seed is somewhere else entirely on a road curving away, which puts the track at a
+                // width it is nowhere near by the time the structure reaches it.
+                MathUtils.Distance(curve.m_Bezier, line, out float2 hit);
+                float3 position = MathUtils.Position(curve.m_Bezier, hit.x);
                 float across = math.dot(position - origin, axis);
                 bool held = false;
                 for (int j = 0; j < tracks.Length; j++)
@@ -930,6 +936,46 @@ namespace RailwaySignals.Signalling
             return false;
         }
 
+        /// <summary>
+        /// Where the two sides of one signal's network cross the line of the structure, as offsets
+        /// across from its centre. False when the network has no built section to measure or lies so
+        /// nearly along the structure that it never crosses it.
+        /// </summary>
+        private bool GetNetworkSides(SignalSiteData site, float3 centre, float3 right, out float2 sides)
+        {
+            sides = float2.zero;
+            if (!m_Graph.m_OwnerData.TryGetComponent(site.m_Approach.m_Lane, out Owner owner)
+                || !m_Graph.m_CompositionData.TryGetComponent(owner.m_Owner, out Composition composition)
+                || !m_Graph.m_PrefabCompositionData.TryGetComponent(composition.m_Edge, out NetCompositionData built)
+                || !m_Graph.m_CurveData.TryGetComponent(owner.m_Owner, out Curve curve))
+            {
+                return false;
+            }
+            // Sampled where the edge crosses the structure rather than at its nearest point, which
+            // on a road curving away from the group is not the same place at all.
+            float span = math.max(30f, m_MaxGantryWidth);
+            MathUtils.Distance(curve.m_Bezier, new Line3.Segment(centre - right * span, centre + right * span), out float2 hit);
+            float3 point = MathUtils.Position(curve.m_Bezier, hit.x);
+            float3 tangent = math.normalizesafe(MathUtils.Tangent(curve.m_Bezier, hit.x), new float3(0f, 0f, 1f));
+            float3 edgeRight = math.normalizesafe(math.cross(math.up(), tangent), new float3(1f, 0f, 0f));
+
+            // The structure and the edge are within the parallel test of each other, so they cross
+            // at a shallow angle and the sides sit further apart along the structure than the width
+            // of the network measured square to its own centreline.
+            float lean = math.dot(right, edgeRight);
+            if (math.abs(lean) < 0.5f)
+            {
+                return false;
+            }
+            float half = built.m_Width * 0.5f;
+            float toCentre = math.dot(point - centre, edgeRight) / lean;
+            float toSide = half / math.abs(lean);
+            float middle = built.m_MiddleOffset / lean;
+            sides = new float2(math.min(toCentre - toSide - middle, toCentre + toSide - middle),
+                math.max(toCentre - toSide - middle, toCentre + toSide - middle));
+            return true;
+        }
+
         private void AddGantry(ref SignalNetwork network, NativeList<int> group, NativeList<float3> tracks, float3 direction, float3 centre, float3 right)
         {
             // Square the structure across the group: one line, at the mean distance along the track.
@@ -943,6 +989,19 @@ namespace RailwaySignals.Signalling
                 acrossMin = math.min(acrossMin, across);
                 acrossMax = math.max(acrossMax, across);
                 railLevel = math.max(railLevel, tracks[i].y);
+            }
+
+            // Carried out to the edge of every network the structure crosses, where the wiring masts
+            // stand. A leg put a fixed distance out from the outermost rail instead has nothing to
+            // do with how wide the ground under it is: on one formation it lands out on open ground
+            // and on the next it comes down in the four foot of a track the group left out.
+            for (int i = 0; i < group.Length; i++)
+            {
+                if (GetNetworkSides(network.m_Sites[group[i]], centre, right, out float2 sides))
+                {
+                    acrossMin = math.min(acrossMin, sides.x);
+                    acrossMax = math.max(acrossMax, sides.y);
+                }
             }
 
             int gantry = network.m_Gantries.Length;

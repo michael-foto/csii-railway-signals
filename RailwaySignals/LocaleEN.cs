@@ -83,7 +83,7 @@ namespace RailwaySignals
                 { m_Setting.GetOptionDescLocaleID(nameof(Setting.adjustHeadSpacing)), "Widens or narrows the gap between the normal speed head and the medium speed head below it. Zero leaves it at the built-in 1.15 m." },
 
                 { m_Setting.GetOptionLabelLocaleID(nameof(Setting.adjustGantryMargin)), "Gantry overhang" },
-                { m_Setting.GetOptionDescLocaleID(nameof(Setting.adjustGantryMargin)), "Extends or shortens a gantry beyond the outermost track it spans. Zero leaves it at the built-in 7 m." },
+                { m_Setting.GetOptionDescLocaleID(nameof(Setting.adjustGantryMargin)), "Extends or shortens a gantry beyond the edge of the networks it spans. Zero stands its legs on the edge itself, alongside the wiring masts." },
 
                 { m_Setting.GetOptionLabelLocaleID(nameof(Setting.adjustGantryLateral)), "Gantry offset from track" },
                 { m_Setting.GetOptionDescLocaleID(nameof(Setting.adjustGantryLateral)), "Moves a gantry-carried signal further from or closer to its own track centre, where it clears the overhead wiring. Zero leaves it at the built-in 1.5 m." },

@@ -67,8 +67,8 @@ namespace RailwaySignals.Systems
         /// </summary>
         private const float kGroundDrop = 0.20f;
 
-        /// <summary>Structure width added beyond the outermost track a bridge spans, in metres.</summary>
-        private const float kGantryMargin = 3f;
+        /// <summary>Structure width added beyond the edge of the networks a bridge spans, in metres.</summary>
+        private const float kGantryMargin = -1f;
 
         /// <summary>How far off its own track centre a bridge-carried signal sits, in metres.</summary>
         private const float kGantryLateralOffset = 1.5f;
@@ -248,6 +248,8 @@ namespace RailwaySignals.Systems
                 m_EdgeData = GetComponentLookup<Game.Net.Edge>(isReadOnly: true),
                 m_CurveData = GetComponentLookup<Curve>(isReadOnly: true),
                 m_PrefabRefData = GetComponentLookup<PrefabRef>(isReadOnly: true),
+                m_CompositionData = GetComponentLookup<Composition>(isReadOnly: true),
+                m_PrefabCompositionData = GetComponentLookup<NetCompositionData>(isReadOnly: true),
                 m_PrefabTrackLaneData = GetComponentLookup<TrackLaneData>(isReadOnly: true),
                 m_ConnectedEdges = GetBufferLookup<Game.Net.ConnectedEdge>(isReadOnly: true),
                 m_SubLanes = GetBufferLookup<Game.Net.SubLane>(isReadOnly: true),

@@ -125,7 +125,7 @@ namespace RailwaySignals
         [SettingsUIAdvanced]
         public float adjustHeadSpacing { get; set; }
 
-        /// <summary>Offsets how far a gantry extends beyond the tracks it spans, in metres.</summary>
+        /// <summary>Offsets how far a gantry extends beyond the edge of the networks it spans, in metres.</summary>
         [SettingsUISlider(min = -6f, max = 6f, step = 0.25f, unit = Unit.kLength, scalarMultiplier = 1f)]
         [SettingsUISection(kSection, kAdvancedGroup)]
         [SettingsUIAdvanced]
