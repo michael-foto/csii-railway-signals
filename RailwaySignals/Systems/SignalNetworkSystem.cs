@@ -68,7 +68,7 @@ namespace RailwaySignals.Systems
         private const float kGroundDrop = 0.20f;
 
         /// <summary>Structure width added beyond the outermost track a bridge spans, in metres.</summary>
-        private const float kGantryMargin = 7f;
+        private const float kGantryMargin = 3f;
 
         /// <summary>How far off its own track centre a bridge-carried signal sits, in metres.</summary>
         private const float kGantryLateralOffset = 1.5f;
@@ -220,7 +220,10 @@ namespace RailwaySignals.Systems
                 m_MaxGantryTrackGap = Mod.setting.maxGantryTrackGap,
                 m_GantryAlignTolerance = Mod.setting.gantryAlignTolerance,
                 m_GantryMargin = kGantryMargin + Mod.setting.adjustGantryMargin,
-                m_GantryLateralOffset = kGantryLateralOffset + Mod.setting.adjustGantryLateral,
+                // offset to the left or right based on traffic setting
+                m_GantryLateralOffset = m_CityConfigurationSystem.leftHandTraffic
+                    ? (kGantryLateralOffset * -1) + Mod.setting.adjustGantryLateral
+                    : kGantryLateralOffset + Mod.setting.adjustGantryLateral,
                 m_MinGantryTrackSeparation = Mod.setting.minGantryTrackSeparation
             };
             planner.Plan(trackLanes, ref m_Network);
