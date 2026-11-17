@@ -12,7 +12,7 @@ namespace RailwaySignals
     {
         public static readonly ILog log = LogManager.GetLogger($"{nameof(RailwaySignals)}.{nameof(Mod)}").SetShowsErrorsInUI(false);
 
-        public static Setting setting;
+        public static RailwaySignalsSetting setting;
 
         public void OnLoad(UpdateSystem updateSystem)
         {
@@ -23,10 +23,10 @@ namespace RailwaySignals
                 log.Info($"Current mod asset at {asset.path}");
             }
 
-            setting = new Setting(this);
+            setting = new RailwaySignalsSetting(this);
             setting.RegisterInOptionsUI();
             GameManager.instance.localizationManager.AddSource("en-US", new LocaleEN(setting));
-            AssetDatabase.global.LoadSettings(nameof(RailwaySignals), setting, new Setting(this));
+            AssetDatabase.global.LoadSettings(nameof(RailwaySignals), setting, new RailwaySignalsSetting(this));
 
             updateSystem.UpdateAt<SignalPrefabSystem>(SystemUpdatePhase.PrefabUpdate);
             updateSystem.UpdateAt<SignalNetworkSystem>(SystemUpdatePhase.ModificationEnd);
