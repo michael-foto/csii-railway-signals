@@ -8,10 +8,11 @@ using Unity.Entities;
 
 namespace RailwaySignals
 {
+    // The options menu saves by looking up this class's bare name across every mod, so it must be unique
     [FileLocation(nameof(RailwaySignals))]
     [SettingsUIGroupOrder(kGeneralGroup, kBlockGroup, kSpeedGroup, kGantryGroup, kAdvancedGroup)]
     [SettingsUIShowGroupName(kGeneralGroup, kBlockGroup, kSpeedGroup, kGantryGroup, kAdvancedGroup)]
-    public class Setting : ModSetting
+    public class RailwaySignalsSetting : ModSetting
     {
         public const string kSection = "Main";
 
@@ -25,7 +26,7 @@ namespace RailwaySignals
 
         public const string kGantryGroup = "Gantries";
 
-        public Setting(IMod mod)
+        public RailwaySignalsSetting(IMod mod)
             : base(mod)
         {
         }
